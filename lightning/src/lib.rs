@@ -41,7 +41,8 @@
 #![cfg_attr(not(any(test, feature = "_test_utils")), forbid(unsafe_code))]
 
 #![deny(rustdoc::broken_intra_doc_links)]
-#![deny(rustdoc::private_intra_doc_links)]
+#![deny(rustdoc::private_intra_doc_links)]#![allow(unexpected_cfgs)]
+
 
 // In general, rust is absolutely horrid at supporting users doing things like,
 // for example, compiling Rust code for real environments. Disable useless lints
@@ -152,4 +153,5 @@ mod prelude {
 #[cfg(all(not(ldk_bench), feature = "backtrace", feature = "std", test))]
 extern crate backtrace;
 
-mod sync;
+mod sync;pub mod rgb_utils;
+

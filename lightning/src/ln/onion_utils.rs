@@ -179,7 +179,8 @@ pub(super) fn construct_onion_keys<T: secp256k1::Signing>(
 pub(super) fn build_onion_payloads<'a>(
 	path: &'a Path, total_msat: u64, recipient_onion: &'a RecipientOnionFields,
 	starting_htlc_offset: u32, keysend_preimage: &Option<PaymentPreimage>,
-) -> Result<(Vec<msgs::OutboundOnionPayload<'a>>, u64, u32), APIError> {
+) -> Result<(Vec<msgs::OutboundOnionPayload<'a>>, u64, u32, Option<u64>), APIError>
+ {
 	let mut res: Vec<msgs::OutboundOnionPayload> = Vec::with_capacity(
 		path.hops.len() + path.blinded_tail.as_ref().map_or(0, |t| t.hops.len()),
 	);
@@ -233,7 +234,13 @@ where
 		// First hop gets special values so that it can check, on receipt, that everything is
 		// exactly as it should be (and the next hop isn't trying to probe to find out if we're
 		// the intended recipient).
-		let value_msat = if cur_value_msat == 0 { hop.fee_msat } else { cur_value_msat };
+		let (value_msat, value_rgb) = if last_msat_amount == 0 {
+  (hop.fee_msat, hop.rgb_amount)
+} else {
+  cur_accumulated_fees += hop.fee_msat;
+  (last_msat_amount, last_amount_rgb)
+};
+
 		let cltv = if cur_cltv == starting_htlc_offset {
 			hop.cltv_expiry_delta + starting_htlc_offset
 		} else {
@@ -262,7 +269,8 @@ where
 								encrypted_tlvs: &blinded_hop.encrypted_payload,
 								intro_node_blinding_point: blinding_point.take(),
 								keysend_preimage: *keysend_preimage,
-								custom_tlvs: &recipient_onion.custom_tlvs,
+								custom_tlvs: &recipient_onion.custom_tlvs,rgb_amount_to_forward: value_rgb,
+
 							},
 						);
 					} else {
@@ -270,7 +278,8 @@ where
 							PayloadCallbackAction::PushBack,
 							msgs::OutboundOnionPayload::BlindedForward {
 								encrypted_tlvs: &blinded_hop.encrypted_payload,
-								intro_node_blinding_point: blinding_point.take(),
+								intro_node_blinding_point: blinding_point.take(),rgb_amount_to_forward: value_rgb,
+
 							},
 						);
 					}
@@ -286,7 +295,8 @@ where
 						keysend_preimage: *keysend_preimage,
 						custom_tlvs: &recipient_onion.custom_tlvs,
 						sender_intended_htlc_amt_msat: value_msat,
-						cltv_expiry_height: cltv,
+						cltv_expiry_height: cltv,rgb_amount_to_forward: value_rgb,
+
 					},
 				);
 			}
@@ -294,12 +304,16 @@ where
 			let payload = msgs::OutboundOnionPayload::Forward {
 				short_channel_id: last_short_channel_id,
 				amt_to_forward: value_msat,
-				outgoing_cltv_value: cltv,
+				outgoing_cltv_value: cltv,rgb_amount_to_forward: value_rgb,
+
 			};
 			callback(PayloadCallbackAction::PushFront, payload);
 		}
-		cur_value_msat += hop.fee_msat;
-		if cur_value_msat >= 21000000 * 100000000 * 1000 {
+		last_amount_rgb = hop.rgb_amount;
+last_msat_amount = hop.payment_amount + cur_accumulated_fees;
+
+		if last_msat_amount >= 21000000 * 100000000 * 1000 {
+
 			return Err(APIError::InvalidRoute { err: "Channel fees overflowed?".to_owned() });
 		}
 		cur_cltv += hop.cltv_expiry_delta as u32;
@@ -308,7 +322,8 @@ where
 		}
 		last_short_channel_id = hop.short_channel_id;
 	}
-	Ok((cur_value_msat, cur_cltv))
+	Ok((last_msat_amount, cur_cltv, last_amount_rgb))
+
 }
 
 pub(crate) const MIN_FINAL_VALUE_ESTIMATE_WITH_OVERPAY: u64 = 100_000_000;
@@ -1158,11 +1173,17 @@ pub fn create_payment_onion<T: secp256k1::Signing>(
 	secp_ctx: &Secp256k1<T>, path: &Path, session_priv: &SecretKey, total_msat: u64,
 	recipient_onion: &RecipientOnionFields, cur_block_height: u32, payment_hash: &PaymentHash,
 	keysend_preimage: &Option<PaymentPreimage>, prng_seed: [u8; 32],
-) -> Result<(msgs::OnionPacket, u64, u32), APIError> {
+) -> Result<(msgs::OnionPacket, u64, u32, Option<u64>
+), APIError> {// The rgb_amount at the last hop
+let mut last_amount_rgb = None;
+let mut last_msat_amount = 0;
+let mut cur_accumulated_fees = 0;
+
 	let onion_keys = construct_onion_keys(&secp_ctx, &path, &session_priv).map_err(|_| {
 		APIError::InvalidRoute { err: "Pubkey along hop was maliciously selected".to_owned() }
 	})?;
-	let (onion_payloads, htlc_msat, htlc_cltv) = build_onion_payloads(
+	let (onion_payloads, htlc_msat, htlc_cltv, htlc_amount_rgb
+) = build_onion_payloads(
 		&path,
 		total_msat,
 		recipient_onion,
@@ -1173,7 +1194,8 @@ pub fn create_payment_onion<T: secp256k1::Signing>(
 		.map_err(|_| APIError::InvalidRoute {
 			err: "Route size too large considering onion data".to_owned(),
 		})?;
-	Ok((onion_packet, htlc_msat, htlc_cltv))
+	Ok((onion_packet, htlc_msat, htlc_cltv, htlc_amount_rgb
+))
 }
 
 pub(crate) fn decode_next_untagged_hop<T, R: ReadableArgs<T>, N: NextPacketBytes>(
@@ -1451,7 +1473,9 @@ mod tests {
 		let payloads = vec!(
 			RawOnionHopData::new(msgs::OutboundOnionPayload::Forward {
 				short_channel_id: 1,
-				amt_to_forward: 15000,
+				amt_to_forward: 15000,rgb_amount_to_forward: None,outgoing_cltv_value: 1250,
+
+
 				outgoing_cltv_value: 1500,
 			}),
 			/*
@@ -1479,7 +1503,8 @@ mod tests {
 			}),
 			RawOnionHopData::new(msgs::OutboundOnionPayload::Forward {
 				short_channel_id: 4,
-				amt_to_forward: 10000,
+				amt_to_forward: 10000,rgb_amount_to_forward: None,
+
 				outgoing_cltv_value: 1000,
 			}),
 			/*

@@ -529,7 +529,8 @@ macro_rules! _decode_tlv_stream_range {
 						}
 					},
 					Err(e) => return Err(e),
-					Ok(t) => if core::ops::RangeBounds::contains(&$range, &t.0) { t } else {
+					Ok(t) => if core::ops::RangeBounds::contains(&$range, &t.0) { t } else {#[allow(clippy::drop_non_drop)]
+
 						drop(tracking_reader);
 
 						// Assumes the type id is minimally encoded, which is enforced on read.

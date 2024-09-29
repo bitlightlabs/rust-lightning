@@ -2540,7 +2540,8 @@ impl<Descriptor: SocketDescriptor, CM: Deref, RM: Deref, OM: Deref, L: Deref, CM
 			self.update_gossip_backlogged();
 			let flush_read_disabled = self.gossip_processing_backlog_lifted.swap(false, Ordering::Relaxed);
 
-			for (descriptor, peer_mutex) in peers_lock.iter() {
+			'outer:
+for (descriptor, peer_mutex) in peers_lock.iter() {
 				let mut peer = peer_mutex.lock().unwrap();
 				if flush_read_disabled { peer.received_channel_announce_since_backlogged = false; }
 
@@ -2571,9 +2572,14 @@ impl<Descriptor: SocketDescriptor, CM: Deref, RM: Deref, OM: Deref, L: Deref, CM
 						|| peer.awaiting_pong_timer_tick_intervals as u64 >
 							MAX_BUFFER_DRAIN_TICK_INTERVALS_PER_PEER as u64 * peers_lock.len() as u64
 					{
-						descriptors_needing_disconnect.push(descriptor.clone());
-						break;
-					}
+  log_info!(self.logger, "PeerManager timer_tick_occurred skip disconnect push");
+  peer.awaiting_pong_timer_tick_intervals = 0;
+  peer.received_message_since_timer_tick = true;
+  continue 'outer;
+  //descriptors_needing_disconnect.push(descriptor.clone());
+  //break;
+}
+
 					peer.received_message_since_timer_tick = false;
 
 					if peer.awaiting_pong_timer_tick_intervals > 0 {

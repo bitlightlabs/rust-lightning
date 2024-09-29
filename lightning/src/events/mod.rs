@@ -1087,7 +1087,15 @@ pub enum Event {
 		/// Note that LDK will NOT check that expected fees were factored into this value. You MUST
 		/// check that whatever fee you want has been included here or subtract it as required. Further,
 		/// LDK will not stop you from forwarding more than you received.
-		expected_outbound_amount_msat: u64,
+		expected_outbound_amount_msat: u64,/// Inbound assets, if any
+inbound_rgb_amount: Option<u64>,
+/// How much assets should be forwarded, if any
+expected_outbound_rgb_amount: Option<u64>,
+/// Whether the intercept is a swap
+is_swap: bool,
+/// Previous short channel id
+prev_short_channel_id: u64,
+
 	},
 	/// Used to indicate that an output which you should know how to spend was confirmed on chain
 	/// and is now spendable.
@@ -1526,7 +1534,9 @@ impl Writeable for Event {
 					(1, channel_id, option),
 				});
 			},
-			&Event::HTLCIntercepted { requested_next_hop_scid, payment_hash, inbound_amount_msat, expected_outbound_amount_msat, intercept_id } => {
+			&Event::HTLCIntercepted { requested_next_hop_scid, payment_hash, inbound_amount_msat, expected_outbound_amount_msat, inbound_rgb_amount, expected_outbound_rgb_amount
+, intercept_id, is_swap, prev_short_channel_id 
+ } => {
 				6u8.write(writer)?;
 				let intercept_scid = InterceptNextHop::FakeScid { requested_next_hop_scid };
 				write_tlv_fields!(writer, {
@@ -1534,13 +1544,18 @@ impl Writeable for Event {
 					(2, intercept_scid, required),
 					(4, payment_hash, required),
 					(6, inbound_amount_msat, required),
-					(8, expected_outbound_amount_msat, required),
+					(8, expected_outbound_amount_msat, required),(10, inbound_rgb_amount, option),
+(12, expected_outbound_rgb_amount, option),
+(14, is_swap, required),
+(16, prev_short_channel_id, required),
+
 				});
 			}
 			&Event::PaymentForwarded {
 				prev_channel_id, next_channel_id, prev_user_channel_id, next_user_channel_id,
 				total_fee_earned_msat, skimmed_fee_msat, claim_from_onchain_tx,
-				outbound_amount_forwarded_msat,
+				outbound_amount_forwarded_msat,outbound_amount_forwarded_rgb, inbound_amount_forwarded_rgb, payment_hash,
+
 			} => {
 				7u8.write(writer)?;
 				write_tlv_fields!(writer, {
@@ -1551,7 +1566,10 @@ impl Writeable for Event {
 					(5, outbound_amount_forwarded_msat, option),
 					(7, skimmed_fee_msat, option),
 					(9, prev_user_channel_id, option),
-					(11, next_user_channel_id, option),
+					(11, next_user_channel_id, option),(13, outbound_amount_forwarded_rgb, option),
+(15, inbound_amount_forwarded_rgb, option),
+(16, payment_hash, required),
+
 				});
 			},
 			&Event::ChannelClosed { ref channel_id, ref user_channel_id, ref reason,
@@ -1883,13 +1901,21 @@ impl MaybeReadable for Event {
 				let mut intercept_id = InterceptId([0; 32]);
 				let mut requested_next_hop_scid = InterceptNextHop::FakeScid { requested_next_hop_scid: 0 };
 				let mut inbound_amount_msat = 0;
-				let mut expected_outbound_amount_msat = 0;
+				let mut expected_outbound_amount_msat = 0;let mut inbound_rgb_amount = None;
+let mut expected_outbound_rgb_amount = None;
+let mut is_swap = false;
+let mut prev_short_channel_id = 0;
+
 				read_tlv_fields!(reader, {
 					(0, intercept_id, required),
 					(2, requested_next_hop_scid, required),
 					(4, payment_hash, required),
 					(6, inbound_amount_msat, required),
-					(8, expected_outbound_amount_msat, required),
+					(8, expected_outbound_amount_msat, required),(10, inbound_rgb_amount, option),
+(12, expected_outbound_rgb_amount, option),
+(14, is_swap, required),
+(16, prev_short_channel_id, required),
+
 				});
 				let next_scid = match requested_next_hop_scid {
 					InterceptNextHop::FakeScid { requested_next_hop_scid: scid } => scid
@@ -1898,8 +1924,12 @@ impl MaybeReadable for Event {
 					payment_hash,
 					requested_next_hop_scid: next_scid,
 					inbound_amount_msat,
-					expected_outbound_amount_msat,
-					intercept_id,
+					expected_outbound_amount_msat,inbound_rgb_amount,
+expected_outbound_rgb_amount,
+
+					intercept_id,is_swap,
+prev_short_channel_id,
+
 				}))
 			},
 			7u8 => {
@@ -1911,7 +1941,10 @@ impl MaybeReadable for Event {
 					let mut total_fee_earned_msat = None;
 					let mut skimmed_fee_msat = None;
 					let mut claim_from_onchain_tx = false;
-					let mut outbound_amount_forwarded_msat = None;
+					let mut outbound_amount_forwarded_msat = None;let mut outbound_amount_forwarded_rgb = None;
+let mut inbound_amount_forwarded_rgb = None;
+let mut payment_hash = PaymentHash::new_zero();
+
 					read_tlv_fields!(reader, {
 						(0, total_fee_earned_msat, option),
 						(1, prev_channel_id, option),
@@ -1920,12 +1953,16 @@ impl MaybeReadable for Event {
 						(5, outbound_amount_forwarded_msat, option),
 						(7, skimmed_fee_msat, option),
 						(9, prev_user_channel_id, option),
-						(11, next_user_channel_id, option),
+						(11, next_user_channel_id, option),(13, outbound_amount_forwarded_rgb, option),
+(15, inbound_amount_forwarded_rgb, option),
+(16, payment_hash, required),
+
 					});
 					Ok(Some(Event::PaymentForwarded {
 						prev_channel_id, next_channel_id, prev_user_channel_id,
 						next_user_channel_id, total_fee_earned_msat, skimmed_fee_msat,
-						claim_from_onchain_tx, outbound_amount_forwarded_msat,
+						claim_from_onchain_tx, outbound_amount_forwarded_msat,outbound_amount_forwarded_rgb, inbound_amount_forwarded_rgb, payment_hash,
+
 					}))
 				};
 				f()

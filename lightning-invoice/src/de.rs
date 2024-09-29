@@ -619,7 +619,32 @@ impl FromBase32 for PrivateRoute {
 
 		Ok(PrivateRoute(RouteHint(route_hops)))
 	}
+}impl FromBase32 for RgbAmount {
+  type Err = Bolt11ParseError;
+
+  fn from_base32(field_data: &[u5]) -> Result<RgbAmount, Bolt11ParseError> {
+    let rgb_amount = parse_u64_be(field_data);
+    if let Some(rgb_amount) = rgb_amount {
+      Ok(RgbAmount(rgb_amount))
+    } else {
+      Err(Bolt11ParseError::IntegerOverflowError)
+    }
+  }
 }
+
+impl FromBase32 for RgbContractId {
+  type Err = Bolt11ParseError;
+
+  fn from_base32(field_data: &[u5]) -> Result<RgbContractId, Bolt11ParseError> {
+    let bytes = Vec::<u8>::from_base32(field_data)?;
+    let rgb_contract_id_str = String::from(str::from_utf8(&bytes)?);
+    match ContractId::from_str(&rgb_contract_id_str) {
+      Ok(cid) => Ok(RgbContractId(cid)),
+      Err(_) => Err(Bolt11ParseError::InvalidContractId),
+    }
+  }
+}
+
 
 impl Display for Bolt11ParseError {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {

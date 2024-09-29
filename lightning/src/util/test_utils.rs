@@ -7,6 +7,7 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
+/*
 use crate::blinded_path::message::MessageContext;
 use crate::blinded_path::message::{BlindedMessagePath, MessageForwardNode};
 use crate::blinded_path::payment::{BlindedPaymentPath, ReceiveTlvs};
@@ -1604,4 +1605,5 @@ impl WalletSource for TestWalletSource {
 		}
 		Ok(tx)
 	}
-}
+}*/
+

@@ -3,6 +3,7 @@
 use lightning_invoice::{Bolt11Invoice, CreationError, Currency, InvoiceBuilder, SignOrCreationError};
 use lightning_invoice::{Description, Bolt11InvoiceDescription, Sha256};
 
+use rgb_lib::ContractId;
 use crate::prelude::*;
 
 use bitcoin::hashes::Hash;
@@ -273,7 +274,8 @@ where
 					},
 					cltv_expiry_delta: MIN_CLTV_EXPIRY_DELTA,
 					htlc_minimum_msat: None,
-					htlc_maximum_msat: None,
+					htlc_maximum_msat: None,htlc_maximum_rgb: None,
+
 				});
 				hint
 			});
@@ -334,7 +336,8 @@ fn rotate_through_iterators<T, I: Iterator<Item = T>>(mut vecs: Vec<I>) -> impl 
 pub fn create_invoice_from_channelmanager<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>(
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description: String, invoice_expiry_delta_secs: u32,
-	min_final_cltv_expiry_delta: Option<u16>,
+	min_final_cltv_expiry_delta: Option<u16>, contract_id: Option<ContractId>, amt_rgb: Option<u64>,
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 where
 	M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -351,7 +354,8 @@ where
 		.expect("for the foreseeable future this shouldn't happen");
 	create_invoice_from_channelmanager_and_duration_since_epoch(
 		channelmanager, node_signer, logger, network, amt_msat,
-		description, duration, invoice_expiry_delta_secs, min_final_cltv_expiry_delta,
+		description, duration, invoice_expiry_delta_secs, min_final_cltv_expiry_delta, contract_id, amt_rgb,
+,
 	)
 }
 
@@ -375,7 +379,8 @@ where
 pub fn create_invoice_from_channelmanager_with_description_hash<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>(
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description_hash: Sha256,
-	invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>,
+	invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>, contract_id: Option<ContractId>, amt_rgb: Option<u64>
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 where
 	M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -395,7 +400,8 @@ where
 
 	create_invoice_from_channelmanager_with_description_hash_and_duration_since_epoch(
 		channelmanager, node_signer, logger, network, amt_msat,
-		description_hash, duration, invoice_expiry_delta_secs, min_final_cltv_expiry_delta,
+		description_hash, duration, invoice_expiry_delta_secs, min_final_cltv_expiry_delta, contract_id, amt_rgb,
+,
 	)
 }
 
@@ -405,7 +411,8 @@ where
 pub fn create_invoice_from_channelmanager_with_description_hash_and_duration_since_epoch<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>(
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description_hash: Sha256,
-	duration_since_epoch: Duration, invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>,
+	duration_since_epoch: Duration, invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>, contract_id: Option<ContractId>, amt_rgb: Option<u64>,
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 		where
 			M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -420,7 +427,8 @@ pub fn create_invoice_from_channelmanager_with_description_hash_and_duration_sin
 	_create_invoice_from_channelmanager_and_duration_since_epoch(
 		channelmanager, node_signer, logger, network, amt_msat,
 		Bolt11InvoiceDescription::Hash(&description_hash),
-		duration_since_epoch, invoice_expiry_delta_secs, min_final_cltv_expiry_delta,
+		duration_since_epoch, invoice_expiry_delta_secs, min_final_cltv_expiry_delta, contract_id, amt_rgb,
+,
 	)
 }
 
@@ -430,7 +438,8 @@ pub fn create_invoice_from_channelmanager_with_description_hash_and_duration_sin
 pub fn create_invoice_from_channelmanager_and_duration_since_epoch<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>(
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description: String, duration_since_epoch: Duration,
-	invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>,
+	invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>, contract_id: Option<ContractId>, amt_rgb: Option<u64>,
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 		where
 			M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -447,14 +456,16 @@ pub fn create_invoice_from_channelmanager_and_duration_since_epoch<M: Deref, T: 
 		Bolt11InvoiceDescription::Direct(
 			&Description::new(description).map_err(SignOrCreationError::CreationError)?,
 		),
-		duration_since_epoch, invoice_expiry_delta_secs, min_final_cltv_expiry_delta,
+		duration_since_epoch, invoice_expiry_delta_secs, min_final_cltv_expiry_delta, contract_id, amt_rgb,
+,
 	)
 }
 
 fn _create_invoice_from_channelmanager_and_duration_since_epoch<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>(
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description: Bolt11InvoiceDescription,
-	duration_since_epoch: Duration, invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>,
+	duration_since_epoch: Duration, invoice_expiry_delta_secs: u32, min_final_cltv_expiry_delta: Option<u16>,contract_id: Option<ContractId>, amt_rgb: Option<u64>
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 		where
 			M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -477,7 +488,8 @@ fn _create_invoice_from_channelmanager_and_duration_since_epoch<M: Deref, T: Der
 		.map_err(|()| SignOrCreationError::CreationError(CreationError::InvalidAmount))?;
 	_create_invoice_from_channelmanager_and_duration_since_epoch_with_payment_hash(
 		channelmanager, node_signer, logger, network, amt_msat, description, duration_since_epoch,
-		invoice_expiry_delta_secs, payment_hash, payment_secret, min_final_cltv_expiry_delta)
+		invoice_expiry_delta_secs, payment_hash, payment_secret, min_final_cltv_expiry_delta,contract_id, amt_rgb
+)
 }
 
 /// See [`create_invoice_from_channelmanager_and_duration_since_epoch`]
@@ -487,7 +499,8 @@ fn _create_invoice_from_channelmanager_and_duration_since_epoch<M: Deref, T: Der
 pub fn create_invoice_from_channelmanager_and_duration_since_epoch_with_payment_hash<M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>(
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description: String, duration_since_epoch: Duration,
-	invoice_expiry_delta_secs: u32, payment_hash: PaymentHash, min_final_cltv_expiry_delta: Option<u16>,
+	invoice_expiry_delta_secs: u32, payment_hash: PaymentHash, min_final_cltv_expiry_delta: Option<u16>, contract_id: Option<ContractId>, amt_rgb: Option<u64>
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 	where
 		M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -509,7 +522,8 @@ pub fn create_invoice_from_channelmanager_and_duration_since_epoch_with_payment_
 			&Description::new(description).map_err(SignOrCreationError::CreationError)?,
 		),
 		duration_since_epoch, invoice_expiry_delta_secs, payment_hash, payment_secret,
-		min_final_cltv_expiry_delta,
+		min_final_cltv_expiry_delta, contract_id, amt_rgb
+,
 	)
 }
 
@@ -517,7 +531,8 @@ fn _create_invoice_from_channelmanager_and_duration_since_epoch_with_payment_has
 	channelmanager: &ChannelManager<M, T, ES, NS, SP, F, R, L>, node_signer: NS, logger: L,
 	network: Currency, amt_msat: Option<u64>, description: Bolt11InvoiceDescription,
 	duration_since_epoch: Duration, invoice_expiry_delta_secs: u32, payment_hash: PaymentHash,
-	payment_secret: PaymentSecret, min_final_cltv_expiry_delta: Option<u16>,
+	payment_secret: PaymentSecret, min_final_cltv_expiry_delta: Option<u16>, contract_id: Option<ContractId>, amt_rgb: Option<u64>
+,
 ) -> Result<Bolt11Invoice, SignOrCreationError<()>>
 	where
 		M::Target: chain::Watch<<SP::Target as SignerProvider>::EcdsaSigner>,
@@ -557,7 +572,13 @@ fn _create_invoice_from_channelmanager_and_duration_since_epoch_with_payment_has
 		.expiry_time(Duration::from_secs(invoice_expiry_delta_secs.into()));
 	if let Some(amt) = amt_msat {
 		invoice = invoice.amount_milli_satoshis(amt);
-	}
+	}if let Some(cid) = contract_id {
+    invoice = invoice.rgb_contract_id(cid);
+  }
+  if let Some(amt) = amt_rgb {
+    invoice = invoice.rgb_amount(amt);
+  }
+
 
 	let route_hints = sort_and_filter_channels(channels, amt_msat, &logger);
 	for hint in route_hints {
@@ -621,7 +642,8 @@ where
 			},
 			cltv_expiry_delta: forwarding_info.cltv_expiry_delta,
 			htlc_minimum_msat: channel.inbound_htlc_minimum_msat,
-			htlc_maximum_msat: channel.inbound_htlc_maximum_msat,}])
+			htlc_maximum_msat: channel.inbound_htlc_maximum_msat,htlc_maximum_rgb: Some(channel.inbound_htlc_maximum_rgb
+}])
 	};
 
 	log_trace!(logger, "Considering {} channels for invoice route hints", channels.len());

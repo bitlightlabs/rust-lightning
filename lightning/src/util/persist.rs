@@ -28,7 +28,8 @@ use crate::ln::channelmanager::AChannelManager;
 use crate::routing::gossip::NetworkGraph;
 use crate::routing::scoring::WriteableScore;
 use crate::util::logger::Logger;
-use crate::util::ser::{Readable, ReadableArgs, Writeable};
+use crate::util::ser::{Readable, ReadableArgs, Writeable};use std::path::PathBuf;
+
 
 /// The alphabet of characters allowed for namespaces and keys.
 pub const KVSTORE_NAMESPACE_KEY_ALPHABET: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
@@ -264,7 +265,8 @@ impl<ChannelSigner: EcdsaChannelSigner, K: KVStore + ?Sized> Persist<ChannelSign
 
 /// Read previously persisted [`ChannelMonitor`]s from the store.
 pub fn read_channel_monitors<K: Deref, ES: Deref, SP: Deref>(
-	kv_store: K, entropy_source: ES, signer_provider: SP,
+	kv_store: K, entropy_source: ES, signer_provider: SP, ldk_data_dir: PathBuf,
+,
 ) -> Result<Vec<(BlockHash, ChannelMonitor<<SP::Target as SignerProvider>::EcdsaSigner>)>, io::Error>
 where
 	K::Target: KVStore,
@@ -293,7 +295,8 @@ where
 		match <(BlockHash, ChannelMonitor<<SP::Target as SignerProvider>::EcdsaSigner>)>::read(
 			&mut io::Cursor::new(
 				kv_store.read(CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE, CHANNEL_MONITOR_PERSISTENCE_SECONDARY_NAMESPACE, &stored_key)?),
-			(&*entropy_source, &*signer_provider),
+			(&*entropy_source, &*signer_provider, ldk_data_dir.clone()
+),
 		) {
 			Ok((block_hash, channel_monitor)) => {
 				if channel_monitor.get_funding_txo().0.txid != txid
@@ -413,7 +416,8 @@ where
 	logger: L,
 	maximum_pending_updates: u64,
 	entropy_source: ES,
-	signer_provider: SP,
+	signer_provider: SP,ldk_data_dir: PathBuf,
+
 	broadcaster: BI,
 	fee_estimator: FE
 }
@@ -447,14 +451,16 @@ where
 	/// [`MonitorUpdatingPersister::cleanup_stale_updates`].
 	pub fn new(
 		kv_store: K, logger: L, maximum_pending_updates: u64, entropy_source: ES,
-		signer_provider: SP, broadcaster: BI, fee_estimator: FE
+		signer_provider: SP, ldk_data_dir: PathBuf,
+, broadcaster: BI, fee_estimator: FE
 	) -> Self {
 		MonitorUpdatingPersister {
 			kv_store,
 			logger,
 			maximum_pending_updates,
 			entropy_source,
-			signer_provider,
+			signer_provider,ldk_data_dir,
+
 			broadcaster,
 			fee_estimator
 		}
@@ -546,7 +552,8 @@ where
 		}
 		match <(BlockHash, ChannelMonitor<<SP::Target as SignerProvider>::EcdsaSigner>)>::read(
 			&mut monitor_cursor,
-			(&*self.entropy_source, &*self.signer_provider),
+			(&*self.entropy_source, &*self.signer_provider, self.ldk_data_dir.clone()
+),
 		) {
 			Ok((blockhash, channel_monitor)) => {
 				if channel_monitor.get_funding_txo().0.txid != outpoint.txid

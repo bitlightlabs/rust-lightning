@@ -21,7 +21,8 @@ use crate::ln::channelmanager::{EventCompletionAction, HTLCSource, PaymentId};
 use crate::ln::features::Bolt12InvoiceFeatures;
 use crate::ln::onion_utils;
 use crate::ln::onion_utils::{DecodedOnionFailure, HTLCFailReason};
-use crate::offers::invoice::Bolt12Invoice;
+use crate::offers::invoice::Bolt12Invoice;use crate::rgb_utils::{filter_first_hops, get_rgb_payment_info_path, is_payment_rgb, parse_rgb_payment_info};
+
 use crate::routing::router::{BlindedTail, InFlightHtlcs, Path, PaymentParameters, Route, RouteParameters, Router};
 use crate::sign::{EntropySource, NodeSigner, Recipient};
 use crate::util::errors::APIError;
@@ -32,7 +33,8 @@ use crate::util::ser::ReadableArgs;
 
 use core::fmt::{self, Display, Formatter};
 use core::ops::Deref;
-use core::time::Duration;
+use core::time::Duration;use std::path::PathBuf;
+
 
 use crate::prelude::*;
 use crate::sync::Mutex;
@@ -666,14 +668,17 @@ pub(super) struct SendAlongPathArgs<'a> {
 
 pub(super) struct OutboundPayments {
 	pub(super) pending_outbound_payments: Mutex<HashMap<PaymentId, PendingOutboundPayment>>,
-	pub(super) retry_lock: Mutex<()>,
+	pub(super) retry_lock: Mutex<()>,pub(super) ldk_data_dir: PathBuf,
+
 }
 
 impl OutboundPayments {
-	pub(super) fn new() -> Self {
+	pub(super) fn new(ldk_data_dir: PathBuf
+) -> Self {
 		Self {
 			pending_outbound_payments: Mutex::new(new_hash_map()),
-			retry_lock: Mutex::new(()),
+			retry_lock: Mutex::new(()),ldk_data_dir,
+
 		}
 	}
 
@@ -831,7 +836,8 @@ impl OutboundPayments {
 			}
 		}
 
-		let amount_msat = invoice.amount_msats();
+		let amount_msat = invoice.amount_msats();let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();    let rgb_payment = is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {      filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)    });
+
 		let mut route_params = RouteParameters::from_payment_params_and_value(
 			payment_params, amount_msat
 		);
@@ -917,12 +923,14 @@ impl OutboundPayments {
 			let mut retry_id_route_params = None;
 			for (pmt_id, pmt) in outbounds.iter_mut() {
 				if pmt.is_auto_retryable_now() {
-					if let PendingOutboundPayment::Retryable { pending_amt_msat, total_msat, payment_params: Some(params), payment_hash, remaining_max_total_routing_fee_msat, .. } = pmt {
+					if let PendingOutboundPayment::Retryable { pending_amt_msat, total_msat, payment_params: Some(params), payment_hash, remaining_max_total_routing_fee_msat, .. } = pmt {let rgb_payment_info_path = get_rgb_payment_info_path(payment_hash, &self.ldk_data_dir, false);          let rgb_payment = if rgb_payment_info_path.exists() {              let rgb_payment_info = parse_rgb_payment_info(&rgb_payment_info_path);              Some((rgb_payment_info.contract_id, rgb_payment_info.amount))            } else {              None            };
+
 						if pending_amt_msat < total_msat {
 							retry_id_route_params = Some((*payment_hash, *pmt_id, RouteParameters {
 								final_value_msat: *total_msat - *pending_amt_msat,
 								payment_params: params.clone(),
-								max_total_routing_fee_msat: *remaining_max_total_routing_fee_msat,
+								max_total_routing_fee_msat: *remaining_max_total_routing_fee_msat,rgb_payment,
+
 							}));
 							break
 						}
@@ -931,7 +939,8 @@ impl OutboundPayments {
 			}
 			core::mem::drop(outbounds);
 			if let Some((payment_hash, payment_id, route_params)) = retry_id_route_params {
-				self.find_route_and_send_payment(payment_hash, payment_id, route_params, router, first_hops(), &inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, &send_payment_along_path)
+				self.find_route_and_send_payment(payment_hash, payment_id, route_params, router,filtered_
+ first_hops(), &inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, &send_payment_along_path)
 			} else { break }
 		}
 
@@ -1048,7 +1057,8 @@ impl OutboundPayments {
 		log_info!(logger, "Sending payment with id {} and hash {} returned {:?}",
 			payment_id, payment_hash, res);
 		if let Err(e) = res {
-			self.handle_pay_route_err(e, payment_id, payment_hash, route, route_params, router, first_hops, &inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, &send_payment_along_path);
+			self.handle_pay_route_err(e, payment_id, payment_hash, route, route_params, router,filtered_
+ first_hops, &inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, &send_payment_along_path);
 		}
 		Ok(())
 	}
@@ -1073,11 +1083,14 @@ impl OutboundPayments {
 				self.abandon_payment(payment_id, PaymentFailureReason::PaymentExpired, pending_events);
 				return
 			}
-		}
+		}let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();    is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {      filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)    });
+let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();    is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {      filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)    });
+
 
 		let mut route = match router.find_route_with_id(
 			&node_signer.get_node_id(Recipient::Node).unwrap(), &route_params,
-			Some(&first_hops.iter().collect::<Vec<_>>()), inflight_htlcs(),
+			Some(&filtered_first_hops.iter().collect::<Vec<&ChannelDetails>>()), inflight_htlcs(),
+
 			payment_hash, payment_id,
 		) {
 			Ok(route) => route,
@@ -1196,7 +1209,8 @@ impl OutboundPayments {
 			&send_payment_along_path);
 		log_info!(logger, "Result retrying payment id {}: {:?}", &payment_id, res);
 		if let Err(e) = res {
-			self.handle_pay_route_err(e, payment_id, payment_hash, route, route_params, router, first_hops, inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, send_payment_along_path);
+			self.handle_pay_route_err(e, payment_id, payment_hash, route, route_params, router,filtered_
+ first_hops, inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, send_payment_along_path);
 		}
 	}
 

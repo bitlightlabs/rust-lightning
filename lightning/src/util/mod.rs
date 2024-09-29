@@ -25,7 +25,8 @@ pub mod wakers;
 #[cfg(fuzzing)]
 pub mod base32;
 #[cfg(not(fuzzing))]
-pub(crate) mod base32;
+pub(crate) mod base32;pub use scid_utils::IS_SWAP_SCID;
+
 
 pub(crate) mod atomic_counter;
 pub(crate) mod async_poll;

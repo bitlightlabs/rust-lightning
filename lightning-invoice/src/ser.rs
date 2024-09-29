@@ -1,7 +1,8 @@
 use core::fmt;
 use core::fmt::{Display, Formatter};
 use bech32::{ToBase32, u5, WriteBase32, Base32Len};
-use crate::prelude::*;
+use crate::prelude::*;use super::{RgbAmount, RgbContractId};
+
 
 use super::{Bolt11Invoice, Sha256, TaggedField, ExpiryTime, MinFinalCltvExpiryDelta, Fallback, PayeePubKey, Bolt11InvoiceSignature, PositiveTimestamp,
 	PrivateRoute, Description, RawTaggedField, Currency, RawHrp, SiPrefix, constants, SignedRawBolt11Invoice, RawDataPart};
@@ -397,7 +398,30 @@ impl Base32Len for PrivateRoute {
 	fn base32_len(&self) -> usize {
 		bytes_size_to_base32_size((self.0).0.len() * 51)
 	}
+}impl ToBase32 for RgbAmount {
+  fn write_base32<W: WriteBase32>(&self, writer: &mut W) -> Result<(), <W as WriteBase32>::Err> {
+    writer.write(&encode_int_be_base32(self.0))
+  }
 }
+
+impl Base32Len for RgbAmount {
+  fn base32_len(&self) -> usize {
+    encoded_int_be_base32_size(self.0)
+  }
+}
+
+impl ToBase32 for RgbContractId {
+  fn write_base32<W: WriteBase32>(&self, writer: &mut W) -> Result<(), <W as WriteBase32>::Err> {
+    self.0.to_string().as_bytes().write_base32(writer)
+  }
+}
+
+impl Base32Len for RgbContractId {
+  fn base32_len(&self) -> usize {
+    self.0.to_string().as_bytes().base32_len()
+  }
+}
+
 
 impl ToBase32 for TaggedField {
 	fn write_base32<W: WriteBase32>(&self, writer: &mut W) -> Result<(), <W as WriteBase32>::Err> {
@@ -451,7 +475,13 @@ impl ToBase32 for TaggedField {
 			},
 			TaggedField::Features(ref features) => {
 				write_tagged_field(writer, constants::TAG_FEATURES, features)
-			},
+			},TaggedField::RgbAmount(ref rgb_amount) => {
+        write_tagged_field(writer, constants::TAG_RGB_AMOUNT, rgb_amount)
+      },
+      TaggedField::RgbContractId(ref rgb_contract_id) => {
+        write_tagged_field(writer, constants::TAG_RGB_CONTRACT_ID, rgb_contract_id)
+      }
+,
 		}
 	}
 }

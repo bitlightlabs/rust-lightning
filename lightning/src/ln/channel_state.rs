@@ -642,7 +642,9 @@ impl Readable for ChannelDetails {
 			(39, feerate_sat_per_1000_weight, option),
 			(41, channel_shutdown_state, option),
 			(43, pending_inbound_htlcs, optional_vec),
-			(45, pending_outbound_htlcs, optional_vec),
+			(45, pending_outbound_htlcs, optional_vec),(46, next_outbound_htlc_limit_rgb, required),
+(48, inbound_htlc_maximum_rgb, required),
+
 		});
 
 		// `user_channel_id` used to be a single u64 value. In order to remain backwards compatible with
@@ -681,7 +683,9 @@ impl Readable for ChannelDetails {
 			feerate_sat_per_1000_weight,
 			channel_shutdown_state,
 			pending_inbound_htlcs: pending_inbound_htlcs.unwrap_or(Vec::new()),
-			pending_outbound_htlcs: pending_outbound_htlcs.unwrap_or(Vec::new()),
+			pending_outbound_htlcs: pending_outbound_htlcs.unwrap_or(Vec::new()),next_outbound_htlc_limit_rgb: next_outbound_htlc_limit_rgb.0.unwrap(),
+inbound_htlc_maximum_rgb: inbound_htlc_maximum_rgb.0.unwrap(),
+
 		})
 	}
 }

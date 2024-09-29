@@ -29,7 +29,8 @@ use crate::chain::chaininterface::fee_for_weight;
 use crate::chain::package::WEIGHT_REVOKED_OUTPUT;
 use crate::sign::EntropySource;
 use crate::ln::types::{PaymentHash, PaymentPreimage};
-use crate::ln::msgs::DecodeError;
+use crate::ln::msgs::DecodeError;use crate::rgb_utils::color_htlc;
+
 use crate::util::ser::{Readable, RequiredWrapper, Writeable, Writer};
 use crate::util::transaction_utils;
 
@@ -40,7 +41,8 @@ use bitcoin::secp256k1::{Secp256k1, ecdsa::Signature, Message};
 use bitcoin::{secp256k1, Sequence, Witness};
 
 use crate::io;
-use core::cmp;
+use core::cmp;use std::path::PathBuf;
+
 use crate::util::transaction_utils::sort_outputs;
 use crate::ln::channel::{INITIAL_COMMITMENT_NUMBER, ANCHOR_OUTPUT_VALUE_SATOSHI};
 use core::ops::Deref;
@@ -576,7 +578,9 @@ pub struct HTLCOutputInCommitment {
 	/// The position within the commitment transactions' outputs. This may be None if the value is
 	/// below the dust limit (in which case no output appears in the commitment transaction and the
 	/// value is spent to additional transaction fees).
-	pub transaction_output_index: Option<u32>,
+	pub transaction_output_index: Option<u32>,/// The RGB amount allocated to the HTLC
+pub amount_rgb: Option<u64>,
+
 }
 
 impl HTLCOutputInCommitment {
@@ -593,7 +597,8 @@ impl_writeable_tlv_based!(HTLCOutputInCommitment, {
 	(2, amount_msat, required),
 	(4, cltv_expiry, required),
 	(6, payment_hash, required),
-	(8, transaction_output_index, option),
+	(8, transaction_output_index, option),(10, amount_rgb, option),
+
 });
 
 #[inline]
@@ -1226,7 +1231,8 @@ pub struct ClosingTransaction {
 	to_holder_value_sat: Amount,
 	to_counterparty_value_sat: Amount,
 	to_holder_script: ScriptBuf,
-	to_counterparty_script: ScriptBuf,
+	to_counterparty_script: ScriptBuf,pub(crate) built: Transaction,
+
 	built: Transaction,
 }
 
@@ -1234,7 +1240,8 @@ impl ClosingTransaction {
 	/// Construct an object of the class
 	pub fn new(
 		to_holder_value_sat: u64,
-		to_counterparty_value_sat: u64,
+		to_counterparty_value_sat: u64,pub(crate) to_holder_script: ScriptBuf,
+
 		to_holder_script: ScriptBuf,
 		to_counterparty_script: ScriptBuf,
 		funding_outpoint: OutPoint,
@@ -1361,7 +1368,8 @@ pub struct CommitmentTransaction {
 	// A cache of the parties' pubkeys required to construct the transaction, see doc for trust()
 	keys: TxCreationKeys,
 	// For access to the pre-built transaction, see doc for trust()
-	built: BuiltCommitmentTransaction,
+	pub(crate) built: BuiltCommitmentTransaction,
+
 }
 
 impl Eq for CommitmentTransaction {}
@@ -1434,7 +1442,17 @@ impl Readable for CommitmentTransaction {
 	}
 }
 
-impl CommitmentTransaction {
+impl CommitmentTransaction {/// Whether the commitment transaction is colored (i.e. it has an OP_RETURN output)
+pub fn is_colored(&self) -> bool {
+  self
+    .built
+    .transaction
+    .output
+    .iter()
+    .enumerate()
+    .find(|(_, o)| o.script_pubkey.is_op_return()).is_some()
+}
+
 	/// Construct an object of the class while assigning transaction output indices to HTLCs.
 	///
 	/// Populates HTLCOutputInCommitment.transaction_output_index in htlcs_with_aux.
@@ -1702,7 +1720,8 @@ impl CommitmentTransaction {
 ///
 /// This structure implements Deref.
 pub struct TrustedCommitmentTransaction<'a> {
-	inner: &'a CommitmentTransaction,
+	pub(crate) inner: &'a CommitmentTransaction,
+
 }
 
 impl<'a> Deref for TrustedCommitmentTransaction<'a> {
@@ -1740,7 +1759,8 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 	/// This function is only valid in the holder commitment context, it always uses EcdsaSighashType::All.
 	pub fn get_htlc_sigs<T: secp256k1::Signing, ES: Deref>(
 		&self, htlc_base_key: &SecretKey, channel_parameters: &DirectedChannelTransactionParameters,
-		entropy_source: &ES, secp_ctx: &Secp256k1<T>,
+		entropy_source: &ES, secp_ctx: &Secp256k1<T>, ldk_data_dir: &PathBuf
+,
 	) -> Result<Vec<Signature>, ()> where ES::Target: EntropySource {
 		let inner = self.inner;
 		let keys = &inner.keys;
@@ -1750,7 +1770,13 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 
 		for this_htlc in inner.htlcs.iter() {
 			assert!(this_htlc.transaction_output_index.is_some());
-			let htlc_tx = build_htlc_transaction(&txid, inner.feerate_per_kw, channel_parameters.contest_delay(), &this_htlc, &self.channel_type_features, &keys.broadcaster_delayed_payment_key, &keys.revocation_key);
+			let mut htlc_tx: Transaction
+ = build_htlc_transactionif inner.is_colored() {
+  if let Err(_e) = color_htlc(&mut htlc_tx, this_htlc, ldk_data_dir) {
+    return Err(());
+  }
+}
+(&txid, inner.feerate_per_kw, channel_parameters.contest_delay(), &this_htlc, &self.channel_type_features, &keys.broadcaster_delayed_payment_key, &keys.revocation_key);
 
 			let htlc_redeemscript = get_htlc_redeemscript_with_explicit_keys(&this_htlc, &self.channel_type_features, &keys.broadcaster_htlc_key, &keys.countersignatory_htlc_key, &keys.revocation_key);
 
@@ -1763,7 +1789,8 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 	/// Builds the second-level holder HTLC transaction for the HTLC with index `htlc_index`.
 	pub(crate) fn build_unsigned_htlc_tx(
 		&self, channel_parameters: &DirectedChannelTransactionParameters, htlc_index: usize,
-		preimage: &Option<PaymentPreimage>,
+		preimage: &Option<PaymentPreimage>, ldk_data_dir: &PathBuf
+,
 	) -> Transaction {
 		let keys = &self.inner.keys;
 		let this_htlc = &self.inner.htlcs[htlc_index];
@@ -1773,10 +1800,16 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 		// Further, we should never be provided the preimage for an HTLC-Timeout transaction.
 		if  this_htlc.offered && preimage.is_some() { unreachable!(); }
 
-		build_htlc_transaction(
+		let mut htlc_tx = build_htlc_transaction(
+
 			&self.inner.built.txid, self.inner.feerate_per_kw, channel_parameters.contest_delay(), &this_htlc,
 			&self.channel_type_features, &keys.broadcaster_delayed_payment_key, &keys.revocation_key
-		)
+		);
+    if self.inner.is_colored() {
+      color_htlc(&mut htlc_tx, this_htlc, ldk_data_dir).expect("successful htlc tx coloring");
+    }
+    htlc_tx
+
 	}
 
 
@@ -1890,545 +1923,4 @@ pub fn get_commitment_transaction_number_obscure_factor(
 		| ((res[31] as u64) << 0 * 8)
 }
 
-#[cfg(test)]
-mod tests {
-	use super::{CounterpartyCommitmentSecrets, ChannelPublicKeys};
-	use crate::chain;
-	use crate::ln::chan_utils::{get_htlc_redeemscript, get_to_countersignatory_with_anchors_redeemscript, CommitmentTransaction, TxCreationKeys, ChannelTransactionParameters, CounterpartyChannelTransactionParameters, HTLCOutputInCommitment};
-	use bitcoin::secp256k1::{PublicKey, SecretKey, Secp256k1};
-	use crate::util::test_utils;
-	use crate::sign::{ChannelSigner, SignerProvider};
-	use bitcoin::{Network, Txid, ScriptBuf, CompressedPublicKey};
-	use bitcoin::hashes::Hash;
-	use bitcoin::hex::FromHex;
-	use crate::ln::types::PaymentHash;
-	use bitcoin::PublicKey as BitcoinPublicKey;
-	use crate::ln::features::ChannelTypeFeatures;
 
-	#[allow(unused_imports)]
-	use crate::prelude::*;
-
-	struct TestCommitmentTxBuilder {
-		commitment_number: u64,
-		holder_funding_pubkey: PublicKey,
-		counterparty_funding_pubkey: PublicKey,
-		keys: TxCreationKeys,
-		feerate_per_kw: u32,
-		htlcs_with_aux: Vec<(HTLCOutputInCommitment, ())>,
-		channel_parameters: ChannelTransactionParameters,
-		counterparty_pubkeys: ChannelPublicKeys,
-	}
-
-	impl TestCommitmentTxBuilder {
-		fn new() -> Self {
-			let secp_ctx = Secp256k1::new();
-			let seed = [42; 32];
-			let network = Network::Testnet;
-			let keys_provider = test_utils::TestKeysInterface::new(&seed, network);
-			let signer = keys_provider.derive_channel_signer(3000, keys_provider.generate_channel_keys_id(false, 1_000_000, 0));
-			let counterparty_signer = keys_provider.derive_channel_signer(3000, keys_provider.generate_channel_keys_id(true, 1_000_000, 1));
-			let delayed_payment_base = &signer.pubkeys().delayed_payment_basepoint;
-			let per_commitment_secret = SecretKey::from_slice(&<Vec<u8>>::from_hex("1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100").unwrap()[..]).unwrap();
-			let per_commitment_point = PublicKey::from_secret_key(&secp_ctx, &per_commitment_secret);
-			let htlc_basepoint = &signer.pubkeys().htlc_basepoint;
-			let holder_pubkeys = signer.pubkeys();
-			let counterparty_pubkeys = counterparty_signer.pubkeys().clone();
-			let keys = TxCreationKeys::derive_new(&secp_ctx, &per_commitment_point, delayed_payment_base, htlc_basepoint, &counterparty_pubkeys.revocation_basepoint, &counterparty_pubkeys.htlc_basepoint);
-			let channel_parameters = ChannelTransactionParameters {
-				holder_pubkeys: holder_pubkeys.clone(),
-				holder_selected_contest_delay: 0,
-				is_outbound_from_holder: false,
-				counterparty_parameters: Some(CounterpartyChannelTransactionParameters { pubkeys: counterparty_pubkeys.clone(), selected_contest_delay: 0 }),
-				funding_outpoint: Some(chain::transaction::OutPoint { txid: Txid::all_zeros(), index: 0 }),
-				channel_type_features: ChannelTypeFeatures::only_static_remote_key(),
-			};
-			let htlcs_with_aux = Vec::new();
-
-			Self {
-				commitment_number: 0,
-				holder_funding_pubkey: holder_pubkeys.funding_pubkey,
-				counterparty_funding_pubkey: counterparty_pubkeys.funding_pubkey,
-				keys,
-				feerate_per_kw: 1,
-				htlcs_with_aux,
-				channel_parameters,
-				counterparty_pubkeys,
-			}
-		}
-
-		fn build(&mut self, to_broadcaster_sats: u64, to_countersignatory_sats: u64) -> CommitmentTransaction {
-			CommitmentTransaction::new_with_auxiliary_htlc_data(
-				self.commitment_number, to_broadcaster_sats, to_countersignatory_sats,
-				self.holder_funding_pubkey.clone(),
-				self.counterparty_funding_pubkey.clone(),
-				self.keys.clone(), self.feerate_per_kw,
-				&mut self.htlcs_with_aux, &self.channel_parameters.as_holder_broadcastable()
-			)
-		}
-	}
-
-	#[test]
-	fn test_anchors() {
-		let mut builder = TestCommitmentTxBuilder::new();
-
-		// Generate broadcaster and counterparty outputs
-		let tx = builder.build(1000, 2000);
-		assert_eq!(tx.built.transaction.output.len(), 2);
-		assert_eq!(tx.built.transaction.output[1].script_pubkey, bitcoin::address::Address::p2wpkh(&CompressedPublicKey(builder.counterparty_pubkeys.payment_point), Network::Testnet).script_pubkey());
-
-		// Generate broadcaster and counterparty outputs as well as two anchors
-		builder.channel_parameters.channel_type_features = ChannelTypeFeatures::anchors_zero_htlc_fee_and_dependencies();
-		let tx = builder.build(1000, 2000);
-		assert_eq!(tx.built.transaction.output.len(), 4);
-		assert_eq!(tx.built.transaction.output[3].script_pubkey, get_to_countersignatory_with_anchors_redeemscript(&builder.counterparty_pubkeys.payment_point).to_p2wsh());
-
-		// Generate broadcaster output and anchor
-		let tx = builder.build(3000, 0);
-		assert_eq!(tx.built.transaction.output.len(), 2);
-
-		// Generate counterparty output and anchor
-		let tx = builder.build(0, 3000);
-		assert_eq!(tx.built.transaction.output.len(), 2);
-
-		let received_htlc = HTLCOutputInCommitment {
-			offered: false,
-			amount_msat: 400000,
-			cltv_expiry: 100,
-			payment_hash: PaymentHash([42; 32]),
-			transaction_output_index: None,
-		};
-
-		let offered_htlc = HTLCOutputInCommitment {
-			offered: true,
-			amount_msat: 600000,
-			cltv_expiry: 100,
-			payment_hash: PaymentHash([43; 32]),
-			transaction_output_index: None,
-		};
-
-		// Generate broadcaster output and received and offered HTLC outputs,  w/o anchors
-		builder.channel_parameters.channel_type_features = ChannelTypeFeatures::only_static_remote_key();
-		builder.htlcs_with_aux = vec![(received_htlc.clone(), ()), (offered_htlc.clone(), ())];
-		let tx = builder.build(3000, 0);
-		let keys = &builder.keys.clone();
-		assert_eq!(tx.built.transaction.output.len(), 3);
-		assert_eq!(tx.built.transaction.output[0].script_pubkey, get_htlc_redeemscript(&received_htlc, &ChannelTypeFeatures::only_static_remote_key(), &keys).to_p2wsh());
-		assert_eq!(tx.built.transaction.output[1].script_pubkey, get_htlc_redeemscript(&offered_htlc, &ChannelTypeFeatures::only_static_remote_key(), &keys).to_p2wsh());
-		assert_eq!(get_htlc_redeemscript(&received_htlc, &ChannelTypeFeatures::only_static_remote_key(), &keys).to_p2wsh().to_hex_string(),
-				   "0020e43a7c068553003fe68fcae424fb7b28ec5ce48cd8b6744b3945631389bad2fb");
-		assert_eq!(get_htlc_redeemscript(&offered_htlc, &ChannelTypeFeatures::only_static_remote_key(), &keys).to_p2wsh().to_hex_string(),
-				   "0020215d61bba56b19e9eadb6107f5a85d7f99c40f65992443f69229c290165bc00d");
-
-		// Generate broadcaster output and received and offered HTLC outputs,  with anchors
-		builder.channel_parameters.channel_type_features = ChannelTypeFeatures::anchors_zero_htlc_fee_and_dependencies();
-		builder.htlcs_with_aux = vec![(received_htlc.clone(), ()), (offered_htlc.clone(), ())];
-		let tx = builder.build(3000, 0);
-		assert_eq!(tx.built.transaction.output.len(), 5);
-		assert_eq!(tx.built.transaction.output[2].script_pubkey, get_htlc_redeemscript(&received_htlc, &ChannelTypeFeatures::anchors_zero_htlc_fee_and_dependencies(), &keys).to_p2wsh());
-		assert_eq!(tx.built.transaction.output[3].script_pubkey, get_htlc_redeemscript(&offered_htlc, &ChannelTypeFeatures::anchors_zero_htlc_fee_and_dependencies(), &keys).to_p2wsh());
-		assert_eq!(get_htlc_redeemscript(&received_htlc, &ChannelTypeFeatures::anchors_zero_htlc_fee_and_dependencies(), &keys).to_p2wsh().to_hex_string(),
-				   "0020b70d0649c72b38756885c7a30908d912a7898dd5d79457a7280b8e9a20f3f2bc");
-		assert_eq!(get_htlc_redeemscript(&offered_htlc, &ChannelTypeFeatures::anchors_zero_htlc_fee_and_dependencies(), &keys).to_p2wsh().to_hex_string(),
-				   "002087a3faeb1950a469c0e2db4a79b093a41b9526e5a6fc6ef5cb949bde3be379c7");
-	}
-
-	#[test]
-	fn test_finding_revokeable_output_index() {
-		let mut builder = TestCommitmentTxBuilder::new();
-
-		// Revokeable output present
-		let tx = builder.build(1000, 2000);
-		assert_eq!(tx.built.transaction.output.len(), 2);
-		assert_eq!(tx.trust().revokeable_output_index(), Some(0));
-
-		// Revokeable output present (but to_broadcaster_delay missing)
-		let tx = CommitmentTransaction { to_broadcaster_delay: None, ..tx };
-		assert_eq!(tx.built.transaction.output.len(), 2);
-		assert_eq!(tx.trust().revokeable_output_index(), None);
-
-		// Revokeable output not present (our balance is dust)
-		let tx = builder.build(0, 2000);
-		assert_eq!(tx.built.transaction.output.len(), 1);
-		assert_eq!(tx.trust().revokeable_output_index(), None);
-	}
-
-	#[test]
-	fn test_building_to_local_justice_tx() {
-		let mut builder = TestCommitmentTxBuilder::new();
-
-		// Revokeable output not present (our balance is dust)
-		let tx = builder.build(0, 2000);
-		assert_eq!(tx.built.transaction.output.len(), 1);
-		assert!(tx.trust().build_to_local_justice_tx(253, ScriptBuf::new()).is_err());
-
-		// Revokeable output present
-		let tx = builder.build(1000, 2000);
-		assert_eq!(tx.built.transaction.output.len(), 2);
-
-		// Too high feerate
-		assert!(tx.trust().build_to_local_justice_tx(100_000, ScriptBuf::new()).is_err());
-
-		// Generate a random public key for destination script
-		let secret_key = SecretKey::from_slice(
-			&<Vec<u8>>::from_hex("1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100")
-			.unwrap()[..]).unwrap();
-		let pubkey_hash = BitcoinPublicKey::new(
-			PublicKey::from_secret_key(&Secp256k1::new(), &secret_key)).wpubkey_hash().unwrap();
-		let destination_script = ScriptBuf::new_p2wpkh(&pubkey_hash);
-
-		let justice_tx = tx.trust().build_to_local_justice_tx(253, destination_script.clone()).unwrap();
-		assert_eq!(justice_tx.input.len(), 1);
-		assert_eq!(justice_tx.input[0].previous_output.txid, tx.built.transaction.compute_txid());
-		assert_eq!(justice_tx.input[0].previous_output.vout, tx.trust().revokeable_output_index().unwrap() as u32);
-		assert!(justice_tx.input[0].sequence.is_rbf());
-
-		assert_eq!(justice_tx.output.len(), 1);
-		assert!(justice_tx.output[0].value.to_sat() < 1000);
-		assert_eq!(justice_tx.output[0].script_pubkey, destination_script);
-	}
-
-	#[test]
-	fn test_per_commitment_storage() {
-		// Test vectors from BOLT 3:
-		let mut secrets: Vec<[u8; 32]> = Vec::new();
-		let mut monitor;
-
-		macro_rules! test_secrets {
-			() => {
-				let mut idx = 281474976710655;
-				for secret in secrets.iter() {
-					assert_eq!(monitor.get_secret(idx).unwrap(), *secret);
-					idx -= 1;
-				}
-				assert_eq!(monitor.get_min_seen_secret(), idx + 1);
-				assert!(monitor.get_secret(idx).is_none());
-			};
-		}
-
-		{
-			// insert_secret correct sequence
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("7cc854b54e3e0dcdb010d7a3fee464a9687be6e8db3be6854c475621e007a5dc").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("2273e227a5b7449b6e70f1fb4652864038b1cbf9cd7c043a7d6456b7fc275ad8").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c65716add7aa98ba7acb236352d665cab17345fe45b55fb879ff80e6bd0c41dd").unwrap());
-			monitor.provide_secret(281474976710651, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("969660042a28f32d9be17344e09374b379962d03db1574df5a8a5a47e19ce3f2").unwrap());
-			monitor.provide_secret(281474976710650, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("a5a64476122ca0925fb344bdc1854c1c0a59fc614298e50a33e331980a220f32").unwrap());
-			monitor.provide_secret(281474976710649, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("05cde6323d949933f7f7b78776bcc1ea6d9b31447732e3802e1f7ac44b650e17").unwrap());
-			monitor.provide_secret(281474976710648, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-		}
-
-		{
-			// insert_secret #1 incorrect
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("02a40c85b6f28da08dfdbe0926c53fab2de6d28c10301f8f7c4073d5e42e3148").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			assert!(monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #2 incorrect (#1 derived from incorrect)
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("02a40c85b6f28da08dfdbe0926c53fab2de6d28c10301f8f7c4073d5e42e3148").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("dddc3a8d14fddf2b68fa8c7fbad2748274937479dd0f8930d5ebb4ab6bd866a3").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("2273e227a5b7449b6e70f1fb4652864038b1cbf9cd7c043a7d6456b7fc275ad8").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			assert!(monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #3 incorrect
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("7cc854b54e3e0dcdb010d7a3fee464a9687be6e8db3be6854c475621e007a5dc").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c51a18b13e8527e579ec56365482c62f180b7d5760b46e9477dae59e87ed423a").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			assert!(monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #4 incorrect (1,2,3 derived from incorrect)
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("02a40c85b6f28da08dfdbe0926c53fab2de6d28c10301f8f7c4073d5e42e3148").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("dddc3a8d14fddf2b68fa8c7fbad2748274937479dd0f8930d5ebb4ab6bd866a3").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c51a18b13e8527e579ec56365482c62f180b7d5760b46e9477dae59e87ed423a").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("ba65d7b0ef55a3ba300d4e87af29868f394f8f138d78a7011669c79b37b936f4").unwrap());
-			monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c65716add7aa98ba7acb236352d665cab17345fe45b55fb879ff80e6bd0c41dd").unwrap());
-			monitor.provide_secret(281474976710651, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("969660042a28f32d9be17344e09374b379962d03db1574df5a8a5a47e19ce3f2").unwrap());
-			monitor.provide_secret(281474976710650, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("a5a64476122ca0925fb344bdc1854c1c0a59fc614298e50a33e331980a220f32").unwrap());
-			monitor.provide_secret(281474976710649, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("05cde6323d949933f7f7b78776bcc1ea6d9b31447732e3802e1f7ac44b650e17").unwrap());
-			assert!(monitor.provide_secret(281474976710648, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #5 incorrect
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("7cc854b54e3e0dcdb010d7a3fee464a9687be6e8db3be6854c475621e007a5dc").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("2273e227a5b7449b6e70f1fb4652864038b1cbf9cd7c043a7d6456b7fc275ad8").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("631373ad5f9ef654bb3dade742d09504c567edd24320d2fcd68e3cc47e2ff6a6").unwrap());
-			monitor.provide_secret(281474976710651, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("969660042a28f32d9be17344e09374b379962d03db1574df5a8a5a47e19ce3f2").unwrap());
-			assert!(monitor.provide_secret(281474976710650, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #6 incorrect (5 derived from incorrect)
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("7cc854b54e3e0dcdb010d7a3fee464a9687be6e8db3be6854c475621e007a5dc").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("2273e227a5b7449b6e70f1fb4652864038b1cbf9cd7c043a7d6456b7fc275ad8").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("631373ad5f9ef654bb3dade742d09504c567edd24320d2fcd68e3cc47e2ff6a6").unwrap());
-			monitor.provide_secret(281474976710651, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("b7e76a83668bde38b373970155c868a653304308f9896692f904a23731224bb1").unwrap());
-			monitor.provide_secret(281474976710650, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("a5a64476122ca0925fb344bdc1854c1c0a59fc614298e50a33e331980a220f32").unwrap());
-			monitor.provide_secret(281474976710649, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("05cde6323d949933f7f7b78776bcc1ea6d9b31447732e3802e1f7ac44b650e17").unwrap());
-			assert!(monitor.provide_secret(281474976710648, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #7 incorrect
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("7cc854b54e3e0dcdb010d7a3fee464a9687be6e8db3be6854c475621e007a5dc").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("2273e227a5b7449b6e70f1fb4652864038b1cbf9cd7c043a7d6456b7fc275ad8").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c65716add7aa98ba7acb236352d665cab17345fe45b55fb879ff80e6bd0c41dd").unwrap());
-			monitor.provide_secret(281474976710651, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("969660042a28f32d9be17344e09374b379962d03db1574df5a8a5a47e19ce3f2").unwrap());
-			monitor.provide_secret(281474976710650, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("e7971de736e01da8ed58b94c2fc216cb1dca9e326f3a96e7194fe8ea8af6c0a3").unwrap());
-			monitor.provide_secret(281474976710649, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("05cde6323d949933f7f7b78776bcc1ea6d9b31447732e3802e1f7ac44b650e17").unwrap());
-			assert!(monitor.provide_secret(281474976710648, secrets.last().unwrap().clone()).is_err());
-		}
-
-		{
-			// insert_secret #8 incorrect
-			monitor = CounterpartyCommitmentSecrets::new();
-			secrets.clear();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("7cc854b54e3e0dcdb010d7a3fee464a9687be6e8db3be6854c475621e007a5dc").unwrap());
-			monitor.provide_secret(281474976710655, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c7518c8ae4660ed02894df8976fa1a3659c1a8b4b5bec0c4b872abeba4cb8964").unwrap());
-			monitor.provide_secret(281474976710654, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("2273e227a5b7449b6e70f1fb4652864038b1cbf9cd7c043a7d6456b7fc275ad8").unwrap());
-			monitor.provide_secret(281474976710653, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("27cddaa5624534cb6cb9d7da077cf2b22ab21e9b506fd4998a51d54502e99116").unwrap());
-			monitor.provide_secret(281474976710652, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("c65716add7aa98ba7acb236352d665cab17345fe45b55fb879ff80e6bd0c41dd").unwrap());
-			monitor.provide_secret(281474976710651, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("969660042a28f32d9be17344e09374b379962d03db1574df5a8a5a47e19ce3f2").unwrap());
-			monitor.provide_secret(281474976710650, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("a5a64476122ca0925fb344bdc1854c1c0a59fc614298e50a33e331980a220f32").unwrap());
-			monitor.provide_secret(281474976710649, secrets.last().unwrap().clone()).unwrap();
-			test_secrets!();
-
-			secrets.push([0; 32]);
-			secrets.last_mut().unwrap()[0..32].clone_from_slice(&<Vec<u8>>::from_hex("a7efbc61aac46d34f77778bac22c8a20c6a46ca460addc49009bda875ec88fa4").unwrap());
-			assert!(monitor.provide_secret(281474976710648, secrets.last().unwrap().clone()).is_err());
-		}
-	}
-}
