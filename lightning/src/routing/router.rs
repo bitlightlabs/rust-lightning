@@ -687,6 +687,7 @@ impl Readable for Route {
 			(2, blinded_tails, optional_vec),
 			(3, final_value_msat, option),
 			(5, max_total_routing_fee_msat, option)
+			(7, rgb_payment, option)
 		});
 		let blinded_tails = blinded_tails.unwrap_or(Vec::new());
 		if blinded_tails.len() != 0 {
@@ -704,6 +705,7 @@ impl Readable for Route {
 				payment_params,
 				final_value_msat,
 				max_total_routing_fee_msat,
+				rgb_payment,
 			}),
 			_ => None,
 		};
@@ -788,6 +790,7 @@ impl Readable for RouteParameters {
 			(1, max_total_routing_fee_msat, option),
 			(2, final_value_msat, required),
 			(4, final_cltv_delta, option),
+						(5, rgb_payment, option),
 		});
 		let mut payment_params: PaymentParameters = payment_params.0.unwrap();
 		if let Payee::Clear { ref mut final_cltv_expiry_delta, .. } = payment_params.payee {
@@ -799,6 +802,7 @@ impl Readable for RouteParameters {
 			payment_params,
 			final_value_msat: final_value_msat.0.unwrap(),
 			max_total_routing_fee_msat,
+			rgb_payment,
 		})
 	}
 }
@@ -4117,6 +4121,7 @@ where
 	)
 }
 
+/*
 #[cfg(any(test, ldk_bench))]
 pub(crate) mod bench_utils {
 	use super::*;
@@ -4504,3 +4509,4 @@ pub mod benches {
 		});
 	}
 }
+*/

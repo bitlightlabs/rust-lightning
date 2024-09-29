@@ -3180,8 +3180,6 @@ where
 			outbound_scid_aliases: Mutex::new(new_hash_set()),
 			pending_inbound_payments: Mutex::new(new_hash_map()),
 			pending_outbound_payments: OutboundPayments::new(ldk_data_dir.clone()),
-
-			pending_outbound_payments: OutboundPayments::new(),
 			forward_htlcs: Mutex::new(new_hash_map()),
 			decode_update_add_htlcs: Mutex::new(new_hash_map()),
 			claimable_payments: Mutex::new(ClaimablePayments {
@@ -3352,6 +3350,8 @@ where
 				self.best_block.read().unwrap().height,
 				outbound_scid_alias,
 				temporary_channel_id,
+				consignment_endpoint,
+				self.ldk_data_dir,
 				&*self.logger,
 			) {
 				Ok(res) => res,
@@ -6177,6 +6177,7 @@ where
 										outgoing_amount_rgb,
 										..
 									},
+								prev_htlc_value_rgb,
 							}) => {
 								let htlc_source =
 									HTLCSource::PreviousHopData(HTLCPreviousHopData {
@@ -6281,6 +6282,7 @@ where
 									next_blinding_point,
 									&self.fee_estimator,
 									&&logger,
+									outgoing_amount_rgb
 								) {
 									if let ChannelError::Ignore(msg) = e {
 										log_trace!(logger, "Failed to forward HTLC with payment_hash {} to peer {}: {}", &payment_hash, &counterparty_node_id, msg);

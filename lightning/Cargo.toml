@@ -42,7 +42,7 @@ lightning-types = { version = "0.1.0", path = "../lightning-types", default-feat
 lightning-invoice = { version = "0.32.0", path = "../lightning-invoice", default-features = false }
 
 bech32 = { version = "0.9.1", default-features = false }
-bitcoin = { version = "0.30.2", default-features = false, features = [
+bitcoin = { version = "0.32.3", default-features = false, features = [
   "base64",
   "secp-recovery",
   "serde",

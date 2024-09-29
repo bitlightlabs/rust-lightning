@@ -501,6 +501,7 @@ impl<ChannelSigner: EcdsaChannelSigner> OnchainTxHandler<ChannelSigner> {
 			onchain_events_awaiting_threshold_conf: Vec::new(),
 			pending_claim_events: Vec::new(),
 			secp_ctx,
+			ldk_data_dir
 		}
 	}
 

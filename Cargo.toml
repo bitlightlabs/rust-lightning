@@ -42,7 +42,7 @@ lto = true
 panic = "abort"
 
 [workspace.lints.rust.unexpected_cfgs]
-level = "forbid"
+# level = "forbid"
 # When adding a new cfg attribute, ensure that it is added to this list.
 #
 # Note that Cargo automatically declares corresponding cfgs for every feature

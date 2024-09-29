@@ -175,6 +175,7 @@ fn private_route() {
 		cltv_expiry_delta: 3,
 		htlc_minimum_msat: None,
 		htlc_maximum_msat: None,
+		htlc_maximum_rgb: None,
 	}]));
 	ser_de_test_len(
 		private_route,

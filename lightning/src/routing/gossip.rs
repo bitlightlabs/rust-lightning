@@ -2542,10 +2542,13 @@ where
 				}
 
 				macro_rules! get_new_channel_info {
-					() => { {
-						let last_update_message,htlc_maximum_rgb: msg.htlc_maximum_rgb,
- = if msg.excess_data.len() <= MAX_EXCESS_BYTES_FOR_RELAY
-							{ full_msg.cloned() } else { None };
+					() => {{
+						let last_update_message =
+							if msg.excess_data.len() <= MAX_EXCESS_BYTES_FOR_RELAY {
+								full_msg.cloned()
+							} else {
+								None
+							};
 
 						let updated_channel_update_info = ChannelUpdateInfo {
 							enabled: chan_enabled,
@@ -2557,10 +2560,11 @@ where
 								base_msat: msg.fee_base_msat,
 								proportional_millionths: msg.fee_proportional_millionths,
 							},
-							last_update_message
+							htlc_maximum_rgb: msg.htlc_maximum_rgb,
+							last_update_message,
 						};
 						Some(updated_channel_update_info)
-					} }
+					}};
 				}
 
 				let msg_hash = hash_to_message!(&message_sha256d_hash(&msg)[..]);

@@ -1804,7 +1804,6 @@ mod fuzzy_internal_msgs {
 			features: BlindedHopFeatures,
 			intro_node_blinding_point: Option<PublicKey>,
 			rgb_amount_to_forward: Option<u64>,
-
 			next_blinding_override: Option<PublicKey>,
 		},
 		BlindedReceive {
@@ -1817,6 +1816,7 @@ mod fuzzy_internal_msgs {
 			intro_node_blinding_point: Option<PublicKey>,
 			keysend_preimage: Option<PaymentPreimage>,
 			custom_tlvs: Vec<(u64, Vec<u8>)>,
+			rgb_amount_to_forward: Option<u64>,
 		},
 	}
 
@@ -1858,6 +1858,7 @@ mod fuzzy_internal_msgs {
 			intro_node_blinding_point: Option<PublicKey>, // Set if the introduction node of the blinded path is the final node
 			keysend_preimage: Option<PaymentPreimage>,
 			custom_tlvs: &'a Vec<(u64, Vec<u8>)>,
+			rgb_amount_to_forward: Option<u64>,
 		},
 	}
 

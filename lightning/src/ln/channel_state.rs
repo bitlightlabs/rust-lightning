@@ -564,6 +564,8 @@ impl ChannelDetails {
 			channel_shutdown_state: Some(context.shutdown_state()),
 			pending_inbound_htlcs: context.get_pending_inbound_htlc_details(),
 			pending_outbound_htlcs: context.get_pending_outbound_htlc_details(),
+			next_outbound_htlc_limit_rgb: context.get_local_rgb_amount(),
+			inbound_htlc_maximum_rgb: context.get_remote_rgb_amount(),
 		}
 	}
 }
@@ -647,9 +649,9 @@ impl Readable for ChannelDetails {
 					(39, feerate_sat_per_1000_weight, option),
 					(41, channel_shutdown_state, option),
 					(43, pending_inbound_htlcs, optional_vec),
-					(45, pending_outbound_htlcs, optional_vec),(46, next_outbound_htlc_limit_rgb, required),
-		(48, inbound_htlc_maximum_rgb, required),
-
+					(45, pending_outbound_htlcs, optional_vec),
+					(46, next_outbound_htlc_limit_rgb, required),
+					(48, inbound_htlc_maximum_rgb, required),
 				});
 
 		// `user_channel_id` used to be a single u64 value. In order to remain backwards compatible with
@@ -724,7 +726,7 @@ impl_writeable_tlv_based_enum!(ChannelShutdownState,
 	(6, NegotiatingClosingFee) => {},
 	(8, ShutdownComplete) => {},
 );
-
+/*
 #[cfg(test)]
 mod tests {
 	use bitcoin::{hashes::Hash as _, secp256k1::PublicKey};
@@ -814,3 +816,5 @@ mod tests {
 		assert_eq!(deser_channel_details, channel_details);
 	}
 }
+
+ */

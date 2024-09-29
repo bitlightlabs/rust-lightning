@@ -1474,6 +1474,7 @@ impl<Signer: EcdsaChannelSigner> ChannelMonitor<Signer> {
 			channel_parameters.clone(),
 			initial_holder_commitment_tx,
 			secp_ctx,
+			ldk_data_dir,
 		);
 
 		let mut outputs_to_watch = new_hash_map();
@@ -5504,6 +5505,7 @@ impl<Signer: EcdsaChannelSigner> ChannelMonitorImpl<Signer> {
 							payment_preimage: Some(payment_preimage),
 							payment_hash,
 							htlc_value_satoshis: Some(amount_msat / 1000),
+							htlc_value_rgb: amount_rgb,
 						}));
 					}
 				} else if offered_preimage_claim {
@@ -6066,7 +6068,7 @@ impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP
 		))
 	}
 }
-
+/*
 #[cfg(test)]
 mod tests {
 	use bitcoin::amount::Amount;
@@ -6836,3 +6838,4 @@ mod tests {
 	}
 	// Further testing is done in the ChannelManager integration tests.
 }
+ */

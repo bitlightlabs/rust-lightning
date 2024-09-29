@@ -1201,6 +1201,12 @@ pub enum Event {
 		///
 		/// The caveat described above the `total_fee_earned_msat` field applies here as well.
 		outbound_amount_forwarded_msat: Option<u64>,
+		/// The rgb amount forwarded outbound.
+		outbound_amount_forwarded_rgb: Option<u64>,
+		/// The rgb amount forwarded inbound.
+		inbound_amount_forwarded_rgb: Option<u64>,
+		/// The payment hash used for this payment.
+		payment_hash: PaymentHash,
 	},
 	/// Used to indicate that a channel with the given `channel_id` is being opened and pending
 	/// confirmation on-chain.

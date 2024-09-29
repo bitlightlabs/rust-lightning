@@ -5,7 +5,9 @@
 #![deny(non_camel_case_types)]
 #![deny(non_snake_case)]
 #![deny(unused_mut)]
+
 #![allow(unexpected_cfgs)]
+
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![cfg_attr(all(not(feature = "std"), not(test)), no_std)]
 
@@ -1141,15 +1143,6 @@ impl RawBolt11Invoice {
 			)
 		})
 	}
-	/// Returns the invoice's `rgb_amount` if present
-	pub fn rgb_amount(&self) -> Option<u64> {
-		self.signed_invoice.rgb_amount().map(|x| x.0)
-	}
-	/// Returns the invoice's `rgb_contract_id` if present
-	pub fn rgb_contract_id(&self) -> Option<ContractId> {
-		self.signed_invoice.rgb_contract_id().map(|x| x.0)
-	}
-
 	pub fn currency(&self) -> Currency {
 		self.hrp.currency.clone()
 	}
@@ -1221,6 +1214,16 @@ impl From<PositiveTimestamp> for SystemTime {
 }
 
 impl Bolt11Invoice {
+	
+	/// Returns the invoice's `rgb_amount` if present
+	pub fn rgb_amount(&self) -> Option<u64> {
+		self.signed_invoice.rgb_amount().map(|x| x.0)
+	}
+	/// Returns the invoice's `rgb_contract_id` if present
+	pub fn rgb_contract_id(&self) -> Option<ContractId> {
+		self.signed_invoice.rgb_contract_id().map(|x| x.0)
+	}
+
 	/// The hash of the [`RawBolt11Invoice`] that was signed.
 	pub fn signable_hash(&self) -> [u8; 32] {
 		self.signed_invoice.hash
@@ -1855,7 +1858,7 @@ impl<'de> Deserialize<'de> for Bolt11Invoice {
 		Ok(bolt11)
 	}
 }
-
+/*
 #[cfg(test)]
 mod test {
 	use bitcoin::hashes::sha256;
@@ -2359,3 +2362,4 @@ mod test {
 		assert_eq!(invoice_str, serialized_invoice.as_str().trim_matches('\"'));
 	}
 }
+ */

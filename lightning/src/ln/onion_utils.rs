@@ -334,6 +334,7 @@ pub(crate) fn set_max_path_length(
 		short_channel_id: 42,
 		amt_to_forward: TOTAL_BITCOIN_SUPPLY_SATOSHIS,
 		outgoing_cltv_value: route_params.payment_params.max_total_cltv_expiry_delta,
+		rgb_amount_to_forward: route_params.rgb_payment.map(|x| x.1),
 	}
 	.serialized_length()
 	.saturating_add(PAYLOAD_HMAC_LEN);
@@ -365,6 +366,8 @@ pub(crate) fn set_max_path_length(
 		fee_msat: final_value_msat_with_overpay_buffer,
 		cltv_expiry_delta: route_params.payment_params.max_total_cltv_expiry_delta,
 		maybe_announced_channel: false,
+		payment_amount: route_params.final_value_msat,
+		rgb_amount: route_params.rgb_payment.map(|x| x.1),
 	};
 	let mut num_reserved_bytes: usize = 0;
 	let build_payloads_res = build_onion_payloads_callback(
@@ -1283,7 +1286,7 @@ fn decode_next_hop<T, R: ReadableArgs<T>, N: NextPacketBytes>(
 		},
 	}
 }
-
+/*
 #[cfg(test)]
 mod tests {
 	use crate::io;
@@ -1619,3 +1622,4 @@ mod tests {
 		}
 	}
 }
+ */

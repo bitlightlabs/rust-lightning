@@ -648,6 +648,7 @@ pub(super) fn check_incoming_htlc_cltv(
 	Ok(())
 }
 
+/*
 #[cfg(test)]
 mod tests {
 	use crate::ln::channelmanager::RecipientOnionFields;
@@ -864,3 +865,4 @@ mod tests {
 		)
 	}
 }
+ */

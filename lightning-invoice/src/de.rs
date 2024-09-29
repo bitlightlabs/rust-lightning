@@ -9,8 +9,9 @@ use core::str::FromStr;
 use std::error;
 
 use bech32::{u5, FromBase32};
+use rgb_lib::ContractId;
 
-use crate::prelude::*;
+use crate::{prelude::*, RgbAmount, RgbContractId};
 use bitcoin::hashes::sha256;
 use bitcoin::hashes::Hash;
 use bitcoin::{PubkeyHash, ScriptHash, WitnessVersion};
@@ -608,6 +609,7 @@ impl FromBase32 for PrivateRoute {
 				),
 				htlc_minimum_msat: None,
 				htlc_maximum_msat: None,
+				htlc_maximum_rgb: None,
 			};
 
 			route_hops.push(hop);
@@ -690,6 +692,7 @@ impl Display for Bolt11ParseError {
 			Bolt11ParseError::Skip => f.write_str(
 				"the tagged field has to be skipped because of an unexpected, but allowed property",
 			),
+			Bolt11ParseError::InvalidContractId => f.write_str("invalid RGB contract ID"),
 		}
 	}
 }
@@ -961,6 +964,7 @@ mod test {
 			cltv_expiry_delta: 3,
 			htlc_minimum_msat: None,
 			htlc_maximum_msat: None,
+			htlc_maximum_rgb: None,
 		});
 		expected.push(RouteHintHop {
 			src_node_id: PublicKey::from_slice(
@@ -976,6 +980,7 @@ mod test {
 			cltv_expiry_delta: 4,
 			htlc_minimum_msat: None,
 			htlc_maximum_msat: None,
+			htlc_maximum_rgb: None,
 		});
 
 		assert_eq!(PrivateRoute::from_base32(&input), Ok(PrivateRoute(RouteHint(expected))));

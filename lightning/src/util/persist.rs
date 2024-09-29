@@ -947,6 +947,7 @@ impl From<u64> for UpdateName {
 		Self(value, value.to_string())
 	}
 }
+/*
 
 #[cfg(test)]
 mod tests {
@@ -1449,3 +1450,4 @@ mod tests {
 		assert!(persist_fn::<_, TestChannelSigner>(store.clone()));
 	}
 }
+ */

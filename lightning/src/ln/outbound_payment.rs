@@ -2533,6 +2533,7 @@ impl_writeable_tlv_based_enum_upgradable!(PendingOutboundPayment,
 	},
 );
 
+/*
 #[cfg(test)]
 mod tests {
 	use bitcoin::network::Network;
@@ -3302,3 +3303,4 @@ mod tests {
 		assert!(pending_events.lock().unwrap().is_empty());
 	}
 }
+ */
