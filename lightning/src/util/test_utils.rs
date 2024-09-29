@@ -1606,4 +1606,3 @@ impl WalletSource for TestWalletSource {
 		Ok(tx)
 	}
 }*/
-

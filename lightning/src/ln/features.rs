@@ -17,21 +17,22 @@
 //! [`lightning::types::features`]: crate::types::features
 //! [BOLT #9]: https://github.com/lightning/bolts/blob/master/09-features.md
 
-pub use lightning_types::features::Features;
-pub use lightning_types::features::{InitFeatures, NodeFeatures, ChannelFeatures};
-pub use lightning_types::features::{Bolt11InvoiceFeatures, OfferFeatures, InvoiceRequestFeatures};
-pub use lightning_types::features::{Bolt12InvoiceFeatures, BlindedHopFeatures};
 pub use lightning_types::features::ChannelTypeFeatures;
+pub use lightning_types::features::Features;
+pub use lightning_types::features::{BlindedHopFeatures, Bolt12InvoiceFeatures};
+pub use lightning_types::features::{Bolt11InvoiceFeatures, InvoiceRequestFeatures, OfferFeatures};
+pub use lightning_types::features::{ChannelFeatures, InitFeatures, NodeFeatures};
 
 #[allow(unused_imports)]
 use crate::prelude::*;
 
-use crate::{io, io_extras};
 use crate::ln::msgs::DecodeError;
-use crate::util::ser::{Writer, Readable, Writeable, WithoutLength};
+use crate::util::ser::{Readable, WithoutLength, Writeable, Writer};
+use crate::{io, io_extras};
 
 fn write_be<W: Writer>(w: &mut W, le_flags: &[u8]) -> Result<(), io::Error> {
-	for f in le_flags.iter().rev() { // Swap back to big-endian
+	for f in le_flags.iter().rev() {
+		// Swap back to big-endian
 		f.write(w)?;
 	}
 	Ok(())
@@ -51,7 +52,7 @@ macro_rules! impl_feature_len_prefixed_write {
 				Ok(Self::from_be_bytes(Vec::<u8>::read(r)?))
 			}
 		}
-	}
+	};
 }
 impl_feature_len_prefixed_write!(InitFeatures);
 impl_feature_len_prefixed_write!(ChannelFeatures);
@@ -73,7 +74,7 @@ macro_rules! impl_feature_tlv_write {
 				Ok(WithoutLength::<Self>::read(r)?.0)
 			}
 		}
-	}
+	};
 }
 
 impl_feature_tlv_write!(ChannelTypeFeatures);
@@ -95,7 +96,7 @@ macro_rules! impl_feature_write_without_length {
 				Ok(WithoutLength($features::from_be_bytes(v)))
 			}
 		}
-	}
+	};
 }
 
 impl_feature_write_without_length!(Bolt12InvoiceFeatures);

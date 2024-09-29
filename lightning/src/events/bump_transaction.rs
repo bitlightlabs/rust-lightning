@@ -14,35 +14,38 @@
 use alloc::collections::BTreeMap;
 use core::ops::Deref;
 
-use crate::chain::chaininterface::{BroadcasterInterface, fee_for_weight};
+use crate::chain::chaininterface::{fee_for_weight, BroadcasterInterface};
 use crate::chain::ClaimId;
 use crate::io_extras::sink;
-use crate::ln::channel::ANCHOR_OUTPUT_VALUE_SATOSHI;
-use crate::ln::types::ChannelId;
 use crate::ln::chan_utils;
 use crate::ln::chan_utils::{
-	ANCHOR_INPUT_WITNESS_WEIGHT, HTLC_SUCCESS_INPUT_ANCHOR_WITNESS_WEIGHT,
-	HTLC_TIMEOUT_INPUT_ANCHOR_WITNESS_WEIGHT, HTLCOutputInCommitment
+	HTLCOutputInCommitment, ANCHOR_INPUT_WITNESS_WEIGHT, HTLC_SUCCESS_INPUT_ANCHOR_WITNESS_WEIGHT,
+	HTLC_TIMEOUT_INPUT_ANCHOR_WITNESS_WEIGHT,
 };
+use crate::ln::channel::ANCHOR_OUTPUT_VALUE_SATOSHI;
+use crate::ln::types::ChannelId;
 use crate::prelude::*;
-use crate::sign::{
-	ChannelDerivationParameters, HTLCDescriptor, SignerProvider, P2WPKH_WITNESS_WEIGHT
-};
 use crate::sign::ecdsa::EcdsaChannelSigner;
+use crate::sign::{
+	ChannelDerivationParameters, HTLCDescriptor, SignerProvider, P2WPKH_WITNESS_WEIGHT,
+};
 use crate::sync::Mutex;
 use crate::util::logger::Logger;
 
-use bitcoin::{OutPoint, Psbt, PubkeyHash, Sequence, ScriptBuf, Transaction, TxIn, TxOut, Witness, WPubkeyHash};
 use bitcoin::amount::Amount;
+use bitcoin::consensus::Encodable;
 use bitcoin::constants::WITNESS_SCALE_FACTOR;
 use bitcoin::locktime::absolute::LockTime;
-use bitcoin::consensus::Encodable;
 use bitcoin::secp256k1;
-use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::secp256k1::ecdsa::Signature;
+use bitcoin::secp256k1::{PublicKey, Secp256k1};
 use bitcoin::transaction::Version;
+use bitcoin::{
+	OutPoint, Psbt, PubkeyHash, ScriptBuf, Sequence, Transaction, TxIn, TxOut, WPubkeyHash, Witness,
+};
 
-pub(crate) const EMPTY_SCRIPT_SIG_WEIGHT: u64 = 1 /* empty script_sig */ * WITNESS_SCALE_FACTOR as u64;
+pub(crate) const EMPTY_SCRIPT_SIG_WEIGHT: u64 =
+	1 /* empty script_sig */ * WITNESS_SCALE_FACTOR as u64;
 
 const BASE_INPUT_SIZE: u64 = 32 /* txid */ + 4 /* vout */ + 4 /* sequence */;
 
@@ -81,27 +84,33 @@ impl AnchorDescriptor {
 
 	/// Returns the witness script of the anchor output in the commitment transaction.
 	pub fn witness_script(&self) -> ScriptBuf {
-		let channel_params = self.channel_derivation_parameters.transaction_parameters.as_holder_broadcastable();
+		let channel_params =
+			self.channel_derivation_parameters.transaction_parameters.as_holder_broadcastable();
 		chan_utils::get_anchor_redeemscript(&channel_params.broadcaster_pubkeys().funding_pubkey)
 	}
 
 	/// Returns the fully signed witness required to spend the anchor output in the commitment
 	/// transaction.
 	pub fn tx_input_witness(&self, signature: &Signature) -> Witness {
-		let channel_params = self.channel_derivation_parameters.transaction_parameters.as_holder_broadcastable();
-		chan_utils::build_anchor_input_witness(&channel_params.broadcaster_pubkeys().funding_pubkey, signature)
+		let channel_params =
+			self.channel_derivation_parameters.transaction_parameters.as_holder_broadcastable();
+		chan_utils::build_anchor_input_witness(
+			&channel_params.broadcaster_pubkeys().funding_pubkey,
+			signature,
+		)
 	}
 
 	/// Derives the channel signer required to sign the anchor input.
 	pub fn derive_channel_signer<S: EcdsaChannelSigner, SP: Deref>(&self, signer_provider: &SP) -> S
 	where
-		SP::Target: SignerProvider<EcdsaSigner= S>
+		SP::Target: SignerProvider<EcdsaSigner = S>,
 	{
 		let mut signer = signer_provider.derive_channel_signer(
 			self.channel_derivation_parameters.value_satoshis,
 			self.channel_derivation_parameters.keys_id,
 		);
-		signer.provide_channel_parameters(&self.channel_derivation_parameters.transaction_parameters);
+		signer
+			.provide_channel_parameters(&self.channel_derivation_parameters.transaction_parameters);
 		signer
 	}
 }
@@ -266,11 +275,8 @@ impl Utxo {
 			33 /* pubkey */;
 		Self {
 			outpoint,
-			output: TxOut {
-				value,
-				script_pubkey: ScriptBuf::new_p2pkh(pubkey_hash),
-			},
-			satisfaction_weight: script_sig_size * WITNESS_SCALE_FACTOR as u64 + 1 /* empty witness */,
+			output: TxOut { value, script_pubkey: ScriptBuf::new_p2pkh(pubkey_hash) },
+			satisfaction_weight: script_sig_size * WITNESS_SCALE_FACTOR as u64 + 1, /* empty witness */
 		}
 	}
 
@@ -284,9 +290,12 @@ impl Utxo {
 			outpoint,
 			output: TxOut {
 				value,
-				script_pubkey: ScriptBuf::new_p2sh(&ScriptBuf::new_p2wpkh(pubkey_hash).script_hash()),
+				script_pubkey: ScriptBuf::new_p2sh(
+					&ScriptBuf::new_p2wpkh(pubkey_hash).script_hash(),
+				),
 			},
-			satisfaction_weight: script_sig_size * WITNESS_SCALE_FACTOR as u64 + P2WPKH_WITNESS_WEIGHT,
+			satisfaction_weight: script_sig_size * WITNESS_SCALE_FACTOR as u64
+				+ P2WPKH_WITNESS_WEIGHT,
 		}
 	}
 
@@ -294,10 +303,7 @@ impl Utxo {
 	pub fn new_v0_p2wpkh(outpoint: OutPoint, value: Amount, pubkey_hash: &WPubkeyHash) -> Self {
 		Self {
 			outpoint,
-			output: TxOut {
-				value,
-				script_pubkey: ScriptBuf::new_p2wpkh(pubkey_hash),
-			},
+			output: TxOut { value, script_pubkey: ScriptBuf::new_p2wpkh(pubkey_hash) },
 			satisfaction_weight: EMPTY_SCRIPT_SIG_WEIGHT + P2WPKH_WITNESS_WEIGHT,
 		}
 	}
@@ -383,7 +389,7 @@ pub trait WalletSource {
 pub struct Wallet<W: Deref, L: Deref>
 where
 	W::Target: WalletSource,
-	L::Target: Logger
+	L::Target: Logger,
 {
 	source: W,
 	logger: L,
@@ -396,7 +402,7 @@ where
 impl<W: Deref, L: Deref> Wallet<W, L>
 where
 	W::Target: WalletSource,
-	L::Target: Logger
+	L::Target: Logger,
 {
 	/// Returns a new instance backed by the given [`WalletSource`] that serves as an implementation
 	/// of [`CoinSelectionSource`].
@@ -418,32 +424,47 @@ where
 		preexisting_tx_weight: u64, input_amount_sat: Amount, target_amount_sat: Amount,
 	) -> Result<CoinSelection, ()> {
 		let mut locked_utxos = self.locked_utxos.lock().unwrap();
-		let mut eligible_utxos = utxos.iter().filter_map(|utxo| {
-			if let Some(utxo_claim_id) = locked_utxos.get(&utxo.outpoint) {
-				if *utxo_claim_id != claim_id && !force_conflicting_utxo_spend {
-					log_trace!(self.logger, "Skipping UTXO {} to prevent conflicting spend", utxo.outpoint);
-					return None;
+		let mut eligible_utxos = utxos
+			.iter()
+			.filter_map(|utxo| {
+				if let Some(utxo_claim_id) = locked_utxos.get(&utxo.outpoint) {
+					if *utxo_claim_id != claim_id && !force_conflicting_utxo_spend {
+						log_trace!(
+							self.logger,
+							"Skipping UTXO {} to prevent conflicting spend",
+							utxo.outpoint
+						);
+						return None;
+					}
 				}
-			}
-			let fee_to_spend_utxo = Amount::from_sat(fee_for_weight(
-				target_feerate_sat_per_1000_weight, BASE_INPUT_WEIGHT + utxo.satisfaction_weight,
-			));
-			let should_spend = if tolerate_high_network_feerates {
-				utxo.output.value > fee_to_spend_utxo
-			} else {
-				utxo.output.value >= fee_to_spend_utxo * 2
-			};
-			if should_spend {
-				Some((utxo, fee_to_spend_utxo))
-			} else {
-				log_trace!(self.logger, "Skipping UTXO {} due to dust proximity after spend", utxo.outpoint);
-				None
-			}
-		}).collect::<Vec<_>>();
+				let fee_to_spend_utxo = Amount::from_sat(fee_for_weight(
+					target_feerate_sat_per_1000_weight,
+					BASE_INPUT_WEIGHT + utxo.satisfaction_weight,
+				));
+				let should_spend = if tolerate_high_network_feerates {
+					utxo.output.value > fee_to_spend_utxo
+				} else {
+					utxo.output.value >= fee_to_spend_utxo * 2
+				};
+				if should_spend {
+					Some((utxo, fee_to_spend_utxo))
+				} else {
+					log_trace!(
+						self.logger,
+						"Skipping UTXO {} due to dust proximity after spend",
+						utxo.outpoint
+					);
+					None
+				}
+			})
+			.collect::<Vec<_>>();
 		eligible_utxos.sort_unstable_by_key(|(utxo, _)| utxo.output.value);
 
 		let mut selected_amount = input_amount_sat;
-		let mut total_fees = Amount::from_sat(fee_for_weight(target_feerate_sat_per_1000_weight, preexisting_tx_weight));
+		let mut total_fees = Amount::from_sat(fee_for_weight(
+			target_feerate_sat_per_1000_weight,
+			preexisting_tx_weight,
+		));
 		let mut selected_utxos = Vec::new();
 		for (utxo, fee_to_spend_utxo) in eligible_utxos {
 			if selected_amount >= target_amount_sat + total_fees {
@@ -454,8 +475,11 @@ where
 			selected_utxos.push(utxo.clone());
 		}
 		if selected_amount < target_amount_sat + total_fees {
-			log_debug!(self.logger, "Insufficient funds to meet target feerate {} sat/kW",
-				target_feerate_sat_per_1000_weight);
+			log_debug!(
+				self.logger,
+				"Insufficient funds to meet target feerate {} sat/kW",
+				target_feerate_sat_per_1000_weight
+			);
 			return Err(());
 		}
 		for utxo in &selected_utxos {
@@ -467,10 +491,11 @@ where
 		let change_script = self.source.get_change_script()?;
 		let change_output_fee = fee_for_weight(
 			target_feerate_sat_per_1000_weight,
-			(8 /* value */ + change_script.consensus_encode(&mut sink()).unwrap() as u64) *
-				WITNESS_SCALE_FACTOR as u64,
+			(8 /* value */ + change_script.consensus_encode(&mut sink()).unwrap() as u64)
+				* WITNESS_SCALE_FACTOR as u64,
 		);
-		let change_output_amount = Amount::from_sat(remaining_amount.to_sat().saturating_sub(change_output_fee));
+		let change_output_amount =
+			Amount::from_sat(remaining_amount.to_sat().saturating_sub(change_output_fee));
 		let change_output = if change_output_amount < change_script.minimal_non_dust() {
 			log_debug!(self.logger, "Coin selection attempt did not yield change output");
 			None
@@ -478,17 +503,14 @@ where
 			Some(TxOut { script_pubkey: change_script, value: change_output_amount })
 		};
 
-		Ok(CoinSelection {
-			confirmed_utxos: selected_utxos,
-			change_output,
-		})
+		Ok(CoinSelection { confirmed_utxos: selected_utxos, change_output })
 	}
 }
 
 impl<W: Deref, L: Deref> CoinSelectionSource for Wallet<W, L>
 where
 	W::Target: WalletSource,
-	L::Target: Logger
+	L::Target: Logger,
 {
 	fn select_confirmed_utxos(
 		&self, claim_id: ClaimId, must_spend: Vec<Input>, must_pay_to: &[TxOut],
@@ -497,22 +519,32 @@ where
 		let utxos = self.source.list_confirmed_utxos()?;
 		// TODO: Use fee estimation utils when we upgrade to bitcoin v0.30.0.
 		const BASE_TX_SIZE: u64 = 4 /* version */ + 1 /* input count */ + 1 /* output count */ + 4 /* locktime */;
-		let total_output_size: u64 = must_pay_to.iter().map(|output|
-			8 /* value */ + 1 /* script len */ + output.script_pubkey.len() as u64
-		).sum();
-		let total_satisfaction_weight: u64 = must_spend.iter().map(|input| input.satisfaction_weight).sum();
-		let total_input_weight = (BASE_INPUT_WEIGHT * must_spend.len() as u64) + total_satisfaction_weight;
+		let total_output_size: u64 = must_pay_to
+			.iter()
+			.map(|output| 8 /* value */ + 1 /* script len */ + output.script_pubkey.len() as u64)
+			.sum();
+		let total_satisfaction_weight: u64 =
+			must_spend.iter().map(|input| input.satisfaction_weight).sum();
+		let total_input_weight =
+			(BASE_INPUT_WEIGHT * must_spend.len() as u64) + total_satisfaction_weight;
 
 		let preexisting_tx_weight = 2 /* segwit marker & flag */ + total_input_weight +
 			((BASE_TX_SIZE + total_output_size) * WITNESS_SCALE_FACTOR as u64);
 		let input_amount_sat = must_spend.iter().map(|input| input.previous_utxo.value).sum();
 		let target_amount_sat = must_pay_to.iter().map(|output| output.value).sum();
-		let do_coin_selection = |force_conflicting_utxo_spend: bool, tolerate_high_network_feerates: bool| {
+		let do_coin_selection = |force_conflicting_utxo_spend: bool,
+		                         tolerate_high_network_feerates: bool| {
 			log_debug!(self.logger, "Attempting coin selection targeting {} sat/kW (force_conflicting_utxo_spend = {}, tolerate_high_network_feerates = {})",
 				target_feerate_sat_per_1000_weight, force_conflicting_utxo_spend, tolerate_high_network_feerates);
 			self.select_confirmed_utxos_internal(
-				&utxos, claim_id, force_conflicting_utxo_spend, tolerate_high_network_feerates,
-				target_feerate_sat_per_1000_weight, preexisting_tx_weight, input_amount_sat, target_amount_sat,
+				&utxos,
+				claim_id,
+				force_conflicting_utxo_spend,
+				tolerate_high_network_feerates,
+				target_feerate_sat_per_1000_weight,
+				preexisting_tx_weight,
+				input_amount_sat,
+				target_amount_sat,
 			)
 		};
 		do_coin_selection(false, false)
@@ -556,13 +588,7 @@ where
 	///
 	/// [`Event::BumpTransaction`]: crate::events::Event::BumpTransaction
 	pub fn new(broadcaster: B, utxo_source: C, signer_provider: SP, logger: L) -> Self {
-		Self {
-			broadcaster,
-			utxo_source,
-			signer_provider,
-			logger,
-			secp: Secp256k1::new(),
-		}
+		Self { broadcaster, utxo_source, signer_provider, logger, secp: Secp256k1::new() }
 	}
 
 	/// Updates a transaction with the result of a successful coin selection attempt.
@@ -609,7 +635,8 @@ where
 	/// broadcasts them to the network as a package.
 	fn handle_channel_close(
 		&self, claim_id: ClaimId, package_target_feerate_sat_per_1000_weight: u32,
-		commitment_tx: &Transaction, commitment_tx_fee_sat: u64, anchor_descriptor: &AnchorDescriptor,
+		commitment_tx: &Transaction, commitment_tx_fee_sat: u64,
+		anchor_descriptor: &AnchorDescriptor,
 	) -> Result<(), ()> {
 		// Our commitment transaction already has fees allocated to it, so we should take them into
 		// account. We do so by pretending the commitment transaction's fee and weight are part of
@@ -628,12 +655,16 @@ where
 				previous_utxo: anchor_utxo.clone(),
 				satisfaction_weight: package_and_fixed_input_satisfaction_weight,
 			}];
-			let must_spend_amount = must_spend.iter().map(|input| input.previous_utxo.value).sum::<Amount>();
+			let must_spend_amount =
+				must_spend.iter().map(|input| input.previous_utxo.value).sum::<Amount>();
 
 			log_debug!(self.logger, "Performing coin selection for commitment package (commitment and anchor transaction) targeting {} sat/kW",
 				package_target_feerate_sat_per_1000_weight);
 			let coin_selection: CoinSelection = self.utxo_source.select_confirmed_utxos(
-				claim_id, must_spend, &[], package_target_feerate_sat_per_1000_weight,
+				claim_id,
+				must_spend,
+				&[],
+				package_target_feerate_sat_per_1000_weight,
 			)?;
 
 			let mut anchor_tx = Transaction {
@@ -643,10 +674,15 @@ where
 				output: vec![],
 			};
 
-			let total_satisfaction_weight = ANCHOR_INPUT_WITNESS_WEIGHT + EMPTY_SCRIPT_SIG_WEIGHT +
-				coin_selection.confirmed_utxos.iter().map(|utxo| utxo.satisfaction_weight).sum::<u64>();
-			let total_input_amount = must_spend_amount +
-				coin_selection.confirmed_utxos.iter().map(|utxo| utxo.output.value).sum();
+			let total_satisfaction_weight = ANCHOR_INPUT_WITNESS_WEIGHT
+				+ EMPTY_SCRIPT_SIG_WEIGHT
+				+ coin_selection
+					.confirmed_utxos
+					.iter()
+					.map(|utxo| utxo.satisfaction_weight)
+					.sum::<u64>();
+			let total_input_amount = must_spend_amount
+				+ coin_selection.confirmed_utxos.iter().map(|utxo| utxo.output.value).sum();
 
 			self.process_coin_selection(&mut anchor_tx, &coin_selection);
 			let anchor_txid = anchor_tx.compute_txid();
@@ -659,27 +695,38 @@ where
 			for (idx, utxo) in coin_selection.confirmed_utxos.into_iter().enumerate() {
 				// add 1 to skip the anchor input
 				let index = idx + 1;
-				debug_assert_eq!(anchor_psbt.unsigned_tx.input[index].previous_output, utxo.outpoint);
+				debug_assert_eq!(
+					anchor_psbt.unsigned_tx.input[index].previous_output,
+					utxo.outpoint
+				);
 				if utxo.output.script_pubkey.is_witness_program() {
 					anchor_psbt.inputs[index].witness_utxo = Some(utxo.output);
 				}
 			}
 
 			debug_assert_eq!(anchor_psbt.unsigned_tx.output.len(), 1);
-			let unsigned_tx_weight = anchor_psbt.unsigned_tx.weight().to_wu() - (anchor_psbt.unsigned_tx.input.len() as u64 * EMPTY_SCRIPT_SIG_WEIGHT);
+			let unsigned_tx_weight = anchor_psbt.unsigned_tx.weight().to_wu()
+				- (anchor_psbt.unsigned_tx.input.len() as u64 * EMPTY_SCRIPT_SIG_WEIGHT);
 
-			let package_fee = total_input_amount -
-				anchor_psbt.unsigned_tx.output.iter().map(|output| output.value).sum();
+			let package_fee = total_input_amount
+				- anchor_psbt.unsigned_tx.output.iter().map(|output| output.value).sum();
 			let package_weight = unsigned_tx_weight + 2 /* wit marker */ + total_satisfaction_weight + commitment_tx.weight().to_wu();
-			if package_fee.to_sat() * 1000 / package_weight < package_target_feerate_sat_per_1000_weight.into() {
+			if package_fee.to_sat() * 1000 / package_weight
+				< package_target_feerate_sat_per_1000_weight.into()
+			{
 				// On the first iteration of the loop, we may undershoot the target feerate because
 				// we had to add an OP_RETURN output in `process_coin_selection` which we didn't
 				// select sufficient coins for. Here we detect that case and go around again
 				// seeking additional weight.
-				if package_and_fixed_input_satisfaction_weight == starting_package_and_fixed_input_satisfaction_weight {
-					debug_assert!(anchor_psbt.unsigned_tx.output[0].script_pubkey.is_op_return(),
-						"Coin selection failed to select sufficient coins for its change output");
-					package_and_fixed_input_satisfaction_weight += anchor_psbt.unsigned_tx.output[0].weight().to_wu();
+				if package_and_fixed_input_satisfaction_weight
+					== starting_package_and_fixed_input_satisfaction_weight
+				{
+					debug_assert!(
+						anchor_psbt.unsigned_tx.output[0].script_pubkey.is_op_return(),
+						"Coin selection failed to select sufficient coins for its change output"
+					);
+					package_and_fixed_input_satisfaction_weight +=
+						anchor_psbt.unsigned_tx.output[0].weight().to_wu();
 					continue;
 				} else {
 					debug_assert!(false, "Coin selection failed to select sufficient coins");
@@ -693,10 +740,12 @@ where
 			let anchor_sig = signer.sign_holder_anchor_input(&anchor_tx, 0, &self.secp)?;
 			anchor_tx.input[0].witness = anchor_descriptor.tx_input_witness(&anchor_sig);
 
-			
-
-			log_info!(self.logger, "Broadcasting anchor transaction {} to bump channel close with txid {}",
-				anchor_txid, commitment_tx.compute_txid());
+			log_info!(
+				self.logger,
+				"Broadcasting anchor transaction {} to bump channel close with txid {}",
+				anchor_txid,
+				commitment_tx.compute_txid()
+			);
 			self.broadcaster.broadcast_transactions(&[&commitment_tx, &anchor_tx]);
 			return Ok(());
 		}
@@ -720,32 +769,42 @@ where
 			must_spend.push(Input {
 				outpoint: htlc_input.previous_output.clone(),
 				previous_utxo: htlc_descriptor.previous_utxo(&self.secp),
-				satisfaction_weight: EMPTY_SCRIPT_SIG_WEIGHT + if htlc_descriptor.preimage.is_some() {
-					HTLC_SUCCESS_INPUT_ANCHOR_WITNESS_WEIGHT
-				} else {
-					HTLC_TIMEOUT_INPUT_ANCHOR_WITNESS_WEIGHT
-				},
+				satisfaction_weight: EMPTY_SCRIPT_SIG_WEIGHT
+					+ if htlc_descriptor.preimage.is_some() {
+						HTLC_SUCCESS_INPUT_ANCHOR_WITNESS_WEIGHT
+					} else {
+						HTLC_TIMEOUT_INPUT_ANCHOR_WITNESS_WEIGHT
+					},
 			});
 			htlc_tx.input.push(htlc_input);
 			let htlc_output = htlc_descriptor.tx_output(&self.secp);
 			htlc_tx.output.push(htlc_output);
 		}
 
-		log_debug!(self.logger, "Performing coin selection for HTLC transaction targeting {} sat/kW",
-			target_feerate_sat_per_1000_weight);
+		log_debug!(
+			self.logger,
+			"Performing coin selection for HTLC transaction targeting {} sat/kW",
+			target_feerate_sat_per_1000_weight
+		);
 
-		
 		#[cfg(debug_assertions)]
-		let must_spend_amount = must_spend.iter().map(|input| input.previous_utxo.value.to_sat()).sum::<u64>();
+		let must_spend_amount =
+			must_spend.iter().map(|input| input.previous_utxo.value.to_sat()).sum::<u64>();
 
 		let coin_selection: CoinSelection = self.utxo_source.select_confirmed_utxos(
-			claim_id, must_spend, &htlc_tx.output, target_feerate_sat_per_1000_weight,
+			claim_id,
+			must_spend,
+			&htlc_tx.output,
+			target_feerate_sat_per_1000_weight,
 		)?;
 
-		
 		#[cfg(debug_assertions)]
-		let total_input_amount = must_spend_amount +
-			coin_selection.confirmed_utxos.iter().map(|utxo| utxo.output.value.to_sat()).sum::<u64>();
+		let total_input_amount = must_spend_amount
+			+ coin_selection
+				.confirmed_utxos
+				.iter()
+				.map(|utxo| utxo.output.value.to_sat())
+				.sum::<u64>();
 
 		self.process_coin_selection(&mut htlc_tx, &coin_selection);
 
@@ -753,7 +812,10 @@ where
 		let mut htlc_psbt = Psbt::from_unsigned_tx(htlc_tx).unwrap();
 		// add witness_utxo to htlc inputs
 		for (i, htlc_descriptor) in htlc_descriptors.iter().enumerate() {
-			debug_assert_eq!(htlc_psbt.unsigned_tx.input[i].previous_output, htlc_descriptor.outpoint());
+			debug_assert_eq!(
+				htlc_psbt.unsigned_tx.input[i].previous_output,
+				htlc_descriptor.outpoint()
+			);
 			htlc_psbt.inputs[i].witness_utxo = Some(htlc_descriptor.previous_utxo(&self.secp));
 		}
 		// add witness_utxo to remaining inputs
@@ -766,21 +828,24 @@ where
 			}
 		}
 
-		
-
-		log_debug!(self.logger, "Signing HTLC transaction {}", htlc_psbt.unsigned_tx.compute_txid());
+		log_debug!(
+			self.logger,
+			"Signing HTLC transaction {}",
+			htlc_psbt.unsigned_tx.compute_txid()
+		);
 		htlc_tx = self.utxo_source.sign_psbt(htlc_psbt)?;
 
 		let mut signers = BTreeMap::new();
 		for (idx, htlc_descriptor) in htlc_descriptors.iter().enumerate() {
-			let signer = signers.entry(htlc_descriptor.channel_derivation_parameters.keys_id)
+			let signer = signers
+				.entry(htlc_descriptor.channel_derivation_parameters.keys_id)
 				.or_insert_with(|| htlc_descriptor.derive_channel_signer(&self.signer_provider));
-			let htlc_sig = signer.sign_holder_htlc_transaction(&htlc_tx, idx, htlc_descriptor, &self.secp)?;
+			let htlc_sig =
+				signer.sign_holder_htlc_transaction(&htlc_tx, idx, htlc_descriptor, &self.secp)?;
 			let witness_script = htlc_descriptor.witness_script(&self.secp);
-			htlc_tx.input[idx].witness = htlc_descriptor.tx_input_witness(&htlc_sig, &witness_script);
+			htlc_tx.input[idx].witness =
+				htlc_descriptor.tx_input_witness(&htlc_sig, &witness_script);
 		}
-
-		
 
 		log_info!(self.logger, "Broadcasting {}", log_tx!(htlc_tx));
 		self.broadcaster.broadcast_transactions(&[&htlc_tx]);
@@ -791,31 +856,59 @@ where
 	pub fn handle_event(&self, event: &BumpTransactionEvent) {
 		match event {
 			BumpTransactionEvent::ChannelClose {
-				claim_id, package_target_feerate_sat_per_1000_weight, commitment_tx,
-				commitment_tx_fee_satoshis, anchor_descriptor, ..
+				claim_id,
+				package_target_feerate_sat_per_1000_weight,
+				commitment_tx,
+				commitment_tx_fee_satoshis,
+				anchor_descriptor,
+				..
 			} => {
-				log_info!(self.logger, "Handling channel close bump (claim_id = {}, commitment_txid = {})",
-					log_bytes!(claim_id.0), commitment_tx.compute_txid());
+				log_info!(
+					self.logger,
+					"Handling channel close bump (claim_id = {}, commitment_txid = {})",
+					log_bytes!(claim_id.0),
+					commitment_tx.compute_txid()
+				);
 				if let Err(_) = self.handle_channel_close(
-					*claim_id, *package_target_feerate_sat_per_1000_weight, commitment_tx,
-					*commitment_tx_fee_satoshis, anchor_descriptor,
+					*claim_id,
+					*package_target_feerate_sat_per_1000_weight,
+					commitment_tx,
+					*commitment_tx_fee_satoshis,
+					anchor_descriptor,
 				) {
-					log_error!(self.logger, "Failed bumping commitment transaction fee for {}",
-						commitment_tx.compute_txid());
+					log_error!(
+						self.logger,
+						"Failed bumping commitment transaction fee for {}",
+						commitment_tx.compute_txid()
+					);
 				}
-			}
+			},
 			BumpTransactionEvent::HTLCResolution {
-				claim_id, target_feerate_sat_per_1000_weight, htlc_descriptors, tx_lock_time, ..
+				claim_id,
+				target_feerate_sat_per_1000_weight,
+				htlc_descriptors,
+				tx_lock_time,
+				..
 			} => {
-				log_info!(self.logger, "Handling HTLC bump (claim_id = {}, htlcs_to_claim = {})",
-					log_bytes!(claim_id.0), log_iter!(htlc_descriptors.iter().map(|d| d.outpoint())));
+				log_info!(
+					self.logger,
+					"Handling HTLC bump (claim_id = {}, htlcs_to_claim = {})",
+					log_bytes!(claim_id.0),
+					log_iter!(htlc_descriptors.iter().map(|d| d.outpoint()))
+				);
 				if let Err(_) = self.handle_htlc_resolution(
-					*claim_id, *target_feerate_sat_per_1000_weight, htlc_descriptors, *tx_lock_time,
+					*claim_id,
+					*target_feerate_sat_per_1000_weight,
+					htlc_descriptors,
+					*tx_lock_time,
 				) {
-					log_error!(self.logger, "Failed bumping HTLC transaction fee for commitment {}",
-						htlc_descriptors[0].commitment_txid);
+					log_error!(
+						self.logger,
+						"Failed bumping HTLC transaction fee for commitment {}",
+						htlc_descriptors[0].commitment_txid
+					);
 				}
-			}
+			},
 		}
 	}
 }
@@ -826,9 +919,9 @@ mod tests {
 
 	use crate::io::Cursor;
 	use crate::ln::chan_utils::ChannelTransactionParameters;
+	use crate::sign::KeysManager;
 	use crate::util::ser::Readable;
 	use crate::util::test_utils::{TestBroadcaster, TestLogger};
-	use crate::sign::KeysManager;
 
 	use bitcoin::hashes::Hash;
 	use bitcoin::hex::FromHex;
@@ -840,11 +933,8 @@ mod tests {
 	}
 	impl CoinSelectionSource for TestCoinSelectionSource {
 		fn select_confirmed_utxos(
-			&self,
-			_claim_id: ClaimId,
-			must_spend: Vec<Input>,
-			_must_pay_to: &[TxOut],
-			target_feerate_sat_per_1000_weight: u32
+			&self, _claim_id: ClaimId, must_spend: Vec<Input>, _must_pay_to: &[TxOut],
+			target_feerate_sat_per_1000_weight: u32,
 		) -> Result<CoinSelection, ()> {
 			let mut expected_selects = self.expected_selects.lock().unwrap();
 			let (weight, value, feerate, res) = expected_selects.remove(0);
@@ -887,26 +977,41 @@ mod tests {
 
 		// Tx 18032ad172a5f28fa6e16392d6cc57ea47895781434ce15d03766cc47a955fb9
 		let commitment_tx_bytes = Vec::<u8>::from_hex("02000000000101cc6b0a9dd84b52c07340fff6fab002fc37b4bdccfdce9f39c5ec8391a56b652907000000009b948b80044a01000000000000220020b4182433fdfdfbf894897c98f84d92cec815cee222755ffd000ae091c9dadc2d4a01000000000000220020f83f7dbf90e2de325b5bb6bab0ae370151278c6964739242b2e7ce0cb68a5d81cb4a02000000000022002024add256b3dccee772610caef82a601045ab6f98fd6d5df608cc756b891ccfe63ffa490000000000220020894bf32b37906a643625e87131897c3714c71b3ac9b161862c9aa6c8d468b4c70400473044022060abd347bff2cca0212b660e6addff792b3356bd4a1b5b26672dc2e694c3c5f002202b40b7e346b494a7b1d048b4ec33ba99c90a09ab48eb1df64ccdc768066c865c014730440220554d8361e04dc0ee178dcb23d2d23f53ec7a1ae4312a5be76bd9e83ab8981f3d0220501f23ffb18cb81ccea72d30252f88d5e69fd28ba4992803d03c00d06fa8899e0147522102817f6ce189ab7114f89e8d5df58cdbbaf272dc8e71b92982d47456a0b6a0ceee2102c9b4d2f24aca54f65e13f4c83e2a8d8e877e12d3c71a76e81f28a5cabc652aa352ae626c7620").unwrap();
-		let commitment_tx: Transaction = Readable::read(&mut Cursor::new(&commitment_tx_bytes)).unwrap();
-		let total_commitment_weight = commitment_tx.weight().to_wu() + ANCHOR_INPUT_WITNESS_WEIGHT + EMPTY_SCRIPT_SIG_WEIGHT;
+		let commitment_tx: Transaction =
+			Readable::read(&mut Cursor::new(&commitment_tx_bytes)).unwrap();
+		let total_commitment_weight =
+			commitment_tx.weight().to_wu() + ANCHOR_INPUT_WITNESS_WEIGHT + EMPTY_SCRIPT_SIG_WEIGHT;
 		let commitment_and_anchor_fee = 930 + 330;
-		let op_return_weight = TxOut {
-			value: Amount::ZERO,
-			script_pubkey: ScriptBuf::new_op_return(&[0; 3]),
-		}.weight().to_wu();
+		let op_return_weight =
+			TxOut { value: Amount::ZERO, script_pubkey: ScriptBuf::new_op_return(&[0; 3]) }
+				.weight()
+				.to_wu();
 
 		let broadcaster = TestBroadcaster::new(Network::Testnet);
 		let source = TestCoinSelectionSource {
 			expected_selects: Mutex::new(vec![
-				(total_commitment_weight, commitment_and_anchor_fee, 868, CoinSelection { confirmed_utxos: Vec::new(), change_output: None }),
-				(total_commitment_weight + op_return_weight, commitment_and_anchor_fee, 868, CoinSelection {
-					confirmed_utxos: vec![Utxo {
-						outpoint: OutPoint { txid: Txid::from_byte_array([44; 32]), vout: 0 },
-						output: TxOut { value: Amount::from_sat(200), script_pubkey: ScriptBuf::new() },
-						satisfaction_weight: 5, // Just the script_sig and witness lengths
-					}],
-					change_output: None,
-				})
+				(
+					total_commitment_weight,
+					commitment_and_anchor_fee,
+					868,
+					CoinSelection { confirmed_utxos: Vec::new(), change_output: None },
+				),
+				(
+					total_commitment_weight + op_return_weight,
+					commitment_and_anchor_fee,
+					868,
+					CoinSelection {
+						confirmed_utxos: vec![Utxo {
+							outpoint: OutPoint { txid: Txid::from_byte_array([44; 32]), vout: 0 },
+							output: TxOut {
+								value: Amount::from_sat(200),
+								script_pubkey: ScriptBuf::new(),
+							},
+							satisfaction_weight: 5, // Just the script_sig and witness lengths
+						}],
+						change_output: None,
+					},
+				),
 			]),
 		};
 		let signer = KeysManager::new(&[42; 32], 42, 42);

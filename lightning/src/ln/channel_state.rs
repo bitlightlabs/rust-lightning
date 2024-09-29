@@ -465,12 +465,12 @@ pub struct ChannelDetails {
 	/// Pending outbound HTLCs.
 	///
 	/// This field is empty for objects serialized with LDK versions prior to 0.0.122.
-	pub pending_outbound_htlcs: Vec<OutboundHTLCDetails>,/// The available outbound RGB capacity for sending a single HTLC to the remote peer.
-pub next_outbound_htlc_limit_rgb: u64,
+	pub pending_outbound_htlcs: Vec<OutboundHTLCDetails>,
+	/// The available outbound RGB capacity for sending a single HTLC to the remote peer.
+	pub next_outbound_htlc_limit_rgb: u64,
 
-/// The largest RGB value HTLC we currently will accept, for this channel.
-pub inbound_htlc_maximum_rgb: u64,
-
+	/// The largest RGB value HTLC we currently will accept, for this channel.
+	pub inbound_htlc_maximum_rgb: u64,
 }
 
 impl ChannelDetails {
@@ -616,41 +616,41 @@ impl Writeable for ChannelDetails {
 impl Readable for ChannelDetails {
 	fn read<R: io::Read>(reader: &mut R) -> Result<Self, DecodeError> {
 		_init_and_read_len_prefixed_tlv_fields!(reader, {
-			(1, inbound_scid_alias, option),
-			(2, channel_id, required),
-			(3, channel_type, option),
-			(4, counterparty, required),
-			(5, outbound_scid_alias, option),
-			(6, funding_txo, option),
-			(7, config, option),
-			(8, short_channel_id, option),
-			(9, confirmations, option),
-			(10, channel_value_satoshis, required),
-			(12, unspendable_punishment_reserve, option),
-			(14, user_channel_id_low, required),
-			(16, balance_msat, required),
-			(18, outbound_capacity_msat, required),
-			// Note that by the time we get past the required read above, outbound_capacity_msat will be
-			// filled in, so we can safely unwrap it here.
-			(19, next_outbound_htlc_limit_msat, (default_value, outbound_capacity_msat.0.unwrap() as u64)),
-			(20, inbound_capacity_msat, required),
-			(21, next_outbound_htlc_minimum_msat, (default_value, 0)),
-			(22, confirmations_required, option),
-			(24, force_close_spend_delay, option),
-			(26, is_outbound, required),
-			(28, is_channel_ready, required),
-			(30, is_usable, required),
-			(32, is_announced, required),
-			(33, inbound_htlc_minimum_msat, option),
-			(35, inbound_htlc_maximum_msat, option),
-			(37, user_channel_id_high_opt, option),
-			(39, feerate_sat_per_1000_weight, option),
-			(41, channel_shutdown_state, option),
-			(43, pending_inbound_htlcs, optional_vec),
-			(45, pending_outbound_htlcs, optional_vec),(46, next_outbound_htlc_limit_rgb, required),
-(48, inbound_htlc_maximum_rgb, required),
+					(1, inbound_scid_alias, option),
+					(2, channel_id, required),
+					(3, channel_type, option),
+					(4, counterparty, required),
+					(5, outbound_scid_alias, option),
+					(6, funding_txo, option),
+					(7, config, option),
+					(8, short_channel_id, option),
+					(9, confirmations, option),
+					(10, channel_value_satoshis, required),
+					(12, unspendable_punishment_reserve, option),
+					(14, user_channel_id_low, required),
+					(16, balance_msat, required),
+					(18, outbound_capacity_msat, required),
+					// Note that by the time we get past the required read above, outbound_capacity_msat will be
+					// filled in, so we can safely unwrap it here.
+					(19, next_outbound_htlc_limit_msat, (default_value, outbound_capacity_msat.0.unwrap() as u64)),
+					(20, inbound_capacity_msat, required),
+					(21, next_outbound_htlc_minimum_msat, (default_value, 0)),
+					(22, confirmations_required, option),
+					(24, force_close_spend_delay, option),
+					(26, is_outbound, required),
+					(28, is_channel_ready, required),
+					(30, is_usable, required),
+					(32, is_announced, required),
+					(33, inbound_htlc_minimum_msat, option),
+					(35, inbound_htlc_maximum_msat, option),
+					(37, user_channel_id_high_opt, option),
+					(39, feerate_sat_per_1000_weight, option),
+					(41, channel_shutdown_state, option),
+					(43, pending_inbound_htlcs, optional_vec),
+					(45, pending_outbound_htlcs, optional_vec),(46, next_outbound_htlc_limit_rgb, required),
+		(48, inbound_htlc_maximum_rgb, required),
 
-		});
+				});
 
 		// `user_channel_id` used to be a single u64 value. In order to remain backwards compatible with
 		// versions prior to 0.0.113, the u128 is serialized as two separate u64 values.
@@ -688,9 +688,9 @@ impl Readable for ChannelDetails {
 			feerate_sat_per_1000_weight,
 			channel_shutdown_state,
 			pending_inbound_htlcs: pending_inbound_htlcs.unwrap_or(Vec::new()),
-			pending_outbound_htlcs: pending_outbound_htlcs.unwrap_or(Vec::new()),next_outbound_htlc_limit_rgb: next_outbound_htlc_limit_rgb.0.unwrap(),
-inbound_htlc_maximum_rgb: inbound_htlc_maximum_rgb.0.unwrap(),
-
+			pending_outbound_htlcs: pending_outbound_htlcs.unwrap_or(Vec::new()),
+			next_outbound_htlc_limit_rgb: next_outbound_htlc_limit_rgb.0.unwrap(),
+			inbound_htlc_maximum_rgb: inbound_htlc_maximum_rgb.0.unwrap(),
 		})
 	}
 }

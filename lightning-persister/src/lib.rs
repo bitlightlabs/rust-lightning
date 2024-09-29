@@ -1,8 +1,8 @@
 //! Provides utilities for LDK data persistence and retrieval.
 
 #![deny(rustdoc::broken_intra_doc_links)]
-#![deny(rustdoc::private_intra_doc_links)]#![allow(unexpected_cfgs)]
-
+#![deny(rustdoc::private_intra_doc_links)]
+#![allow(unexpected_cfgs)]
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 

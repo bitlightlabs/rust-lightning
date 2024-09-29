@@ -22,8 +22,8 @@
 //! [`OnionMessenger`]: self::messenger::OnionMessenger
 
 pub mod async_payments;
+#[cfg(test)]
+mod functional_tests;
 pub mod messenger;
 pub mod offers;
 pub mod packet;
-#[cfg(test)]
-mod functional_tests;

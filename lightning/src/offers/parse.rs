@@ -9,10 +9,10 @@
 
 //! Parsing and formatting for bech32 message encoding.
 
-use bitcoin::secp256k1;
 use crate::io;
 use crate::ln::msgs::DecodeError;
 use crate::util::ser::CursorReadable;
+use bitcoin::secp256k1;
 
 #[allow(unused_imports)]
 use crate::prelude::*;
@@ -24,15 +24,15 @@ pub(super) use sealed::Bech32Encode;
 pub use sealed::Bech32Encode;
 
 mod sealed {
+	use super::Bolt12ParseError;
 	use bech32::{FromBase32, ToBase32};
 	use core::fmt;
-	use super::Bolt12ParseError;
 
 	#[allow(unused_imports)]
 	use crate::prelude::*;
 
 	/// Indicates a message can be encoded using bech32.
-	pub trait Bech32Encode: AsRef<[u8]> + TryFrom<Vec<u8>, Error=Bolt12ParseError> {
+	pub trait Bech32Encode: AsRef<[u8]> + TryFrom<Vec<u8>, Error = Bolt12ParseError> {
 		/// Human readable part of the message's bech32 encoding.
 		const BECH32_HRP: &'static str;
 
@@ -67,7 +67,8 @@ mod sealed {
 		/// Formats the message using bech32-encoding.
 		fn fmt_bech32_str(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
 			bech32::encode_without_checksum_to_fmt(f, Self::BECH32_HRP, self.as_ref().to_base32())
-				.expect("HRP is invalid").unwrap();
+				.expect("HRP is invalid")
+				.unwrap();
 
 			Ok(())
 		}

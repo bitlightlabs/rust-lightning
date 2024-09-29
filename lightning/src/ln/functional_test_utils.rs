@@ -8,7 +8,9 @@
 // licenses.
 
 //! A bunch of useful utilities for building networks of nodes and exchanging messages between
-//! nodes for functional tests./*
+//! nodes for functional tests.
+
+/*
 
 
 use crate::chain::{BestBlock, ChannelMonitorUpdateStatus, Confirm, Listen, Watch, chainmonitor::Persist};
@@ -3925,5 +3927,6 @@ pub fn create_batch_channel_funding<'a, 'b, 'c>(
 		funding_created_msgs.push(funding_created);
 	}
 	return (tx, funding_created_msgs);
-}*/
+}
 
+ */

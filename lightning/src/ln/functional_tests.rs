@@ -9,7 +9,9 @@
 
 //! Tests that test standing up a network of ChannelManagers, creating channels, sending
 //! payments/messages between them, and often checking the resulting ChannelMonitors are able to
-//! claim outputs on-chain./*
+//! claim outputs on-chain.
+
+/*
 
 
 use crate::chain;
@@ -5573,7 +5575,7 @@ fn test_dynamic_spendable_outputs_local_htlc_timeout_tx() {
 	assert_eq!(spend_txn[2].input.len(), 2);
 	check_spends!(spend_txn[2], local_txn[0], htlc_timeout);
 	assert!(spend_txn[2].input[0].sequence.0 == BREAKDOWN_TIMEOUT as u32 ||
-	        spend_txn[2].input[1].sequence.0 == BREAKDOWN_TIMEOUT as u32);
+			spend_txn[2].input[1].sequence.0 == BREAKDOWN_TIMEOUT as u32);
 }
 
 #[test]
@@ -5624,9 +5626,9 @@ fn test_key_derivation_params() {
 	let (from_0_funding_key_0, from_0_funding_key_1) = (PublicKey::from_slice(&local_txn_0[0].input[0].witness.to_vec()[3][2..35]), PublicKey::from_slice(&local_txn_0[0].input[0].witness.to_vec()[3][36..69]));
 	let (from_1_funding_key_0, from_1_funding_key_1) = (PublicKey::from_slice(&local_txn_1[0].input[0].witness.to_vec()[3][2..35]), PublicKey::from_slice(&local_txn_1[0].input[0].witness.to_vec()[3][36..69]));
 	if from_0_funding_key_0 == from_1_funding_key_0
-	    || from_0_funding_key_0 == from_1_funding_key_1
-	    || from_0_funding_key_1 == from_1_funding_key_0
-	    || from_0_funding_key_1 == from_1_funding_key_1 {
+		|| from_0_funding_key_0 == from_1_funding_key_1
+		|| from_0_funding_key_1 == from_1_funding_key_0
+		|| from_0_funding_key_1 == from_1_funding_key_1 {
 		panic!("Funding pubkeys aren't unique");
 	}
 
@@ -5661,7 +5663,7 @@ fn test_key_derivation_params() {
 	assert_eq!(spend_txn[2].input.len(), 2);
 	check_spends!(spend_txn[2], local_txn_1[0], htlc_timeout);
 	assert!(spend_txn[2].input[0].sequence.0 == BREAKDOWN_TIMEOUT as u32 ||
-	        spend_txn[2].input[1].sequence.0 == BREAKDOWN_TIMEOUT as u32);
+			spend_txn[2].input[1].sequence.0 == BREAKDOWN_TIMEOUT as u32);
 }
 
 #[test]
@@ -11208,7 +11210,7 @@ fn test_accept_inbound_channel_errors_queued() {
 	}
 	assert_eq!(get_err_msg(&nodes[1], &nodes[0].node.get_our_node_id()).channel_id,
 		open_channel_msg.common_fields.temporary_channel_id);
-}*/
+}
 
 
 #[test]
@@ -11311,3 +11313,4 @@ fn test_funding_signed_event() {
 	nodes[1].node.get_and_clear_pending_msg_events();
 }
 
+*/

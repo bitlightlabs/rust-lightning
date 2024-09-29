@@ -374,7 +374,8 @@ where
 				channel_flags: standard_channel_flags,
 				cltv_expiry_delta: default_cltv_expiry_delta,
 				htlc_minimum_msat: default_htlc_minimum_msat,
-				htlc_maximum_msat: default_htlc_maximum_msat,htlc_maximum_rgb: 0, // unused message in RLN, so this value is irrelevant
+				htlc_maximum_msat: default_htlc_maximum_msat,
+				htlc_maximum_rgb: 0, // unused message in RLN, so this value is irrelevant
 
 				fee_base_msat: default_fee_base_msat,
 				fee_proportional_millionths: default_fee_proportional_millionths,

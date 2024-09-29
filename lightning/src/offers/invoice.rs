@@ -1,4 +1,4 @@
-    // This file is Copyright its original authors, visible in version control
+// This file is Copyright its original authors, visible in version control
 // history.
 //
 // This file is licensed under the Apache License, Version 2.0 <LICENSE-APACHE
@@ -47,12 +47,18 @@
 //! // Invoice for the "offer to be paid" flow.
 //! # <InvoiceBuilder<ExplicitSigningPubkey>>::from(
 //! InvoiceRequest::try_from(bytes)?
-#![cfg_attr(feature = "std", doc = "
+#![cfg_attr(
+	feature = "std",
+	doc = "
     .respond_with(payment_paths, payment_hash)?
-")]
-#![cfg_attr(not(feature = "std"), doc = "
+"
+)]
+#![cfg_attr(
+	not(feature = "std"),
+	doc = "
     .respond_with_no_std(payment_paths, payment_hash, core::time::Duration::from_secs(0))?
-")]
+"
+)]
 //! # )
 //!     .relative_expiry(3600)
 //!     .allow_mpp()
@@ -80,12 +86,18 @@
 //! # <InvoiceBuilder<ExplicitSigningPubkey>>::from(
 //! "lnr1qcp4256ypq"
 //!     .parse::<Refund>()?
-#![cfg_attr(feature = "std", doc = "
+#![cfg_attr(
+	feature = "std",
+	doc = "
     .respond_with(payment_paths, payment_hash, pubkey)?
-")]
-#![cfg_attr(not(feature = "std"), doc = "
+"
+)]
+#![cfg_attr(
+	not(feature = "std"),
+	doc = "
     .respond_with_no_std(payment_paths, payment_hash, pubkey, core::time::Duration::from_secs(0))?
-")]
+"
+)]
 //! # )
 //!     .relative_expiry(3600)
 //!     .allow_mpp()
@@ -102,35 +114,47 @@
 //!
 //! ```
 
-use bitcoin::{WitnessProgram, Network, WitnessVersion};
-use bitcoin::constants::ChainHash;
-use bitcoin::secp256k1::{Keypair, PublicKey, Secp256k1, self};
-use bitcoin::secp256k1::schnorr::Signature;
-use bitcoin::address::Address;
-use core::time::Duration;
-use core::hash::{Hash, Hasher};
-use crate::io;
-use crate::blinded_path::BlindedPath;
 use crate::blinded_path::message::BlindedMessagePath;
 use crate::blinded_path::payment::{BlindedPayInfo, BlindedPaymentPath};
-use crate::ln::types::PaymentHash;
+use crate::blinded_path::BlindedPath;
+use crate::io;
 use crate::ln::channelmanager::PaymentId;
 use crate::ln::features::{Bolt12InvoiceFeatures, InvoiceRequestFeatures, OfferFeatures};
 use crate::ln::inbound_payment::{ExpandedKey, IV_LEN};
 use crate::ln::msgs::DecodeError;
-use crate::offers::invoice_macros::{invoice_accessors_common, invoice_builder_methods_common};
+use crate::ln::types::PaymentHash;
 #[cfg(test)]
 use crate::offers::invoice_macros::invoice_builder_methods_test;
-use crate::offers::invoice_request::{INVOICE_REQUEST_PAYER_ID_TYPE, INVOICE_REQUEST_TYPES, IV_BYTES as INVOICE_REQUEST_IV_BYTES, InvoiceRequest, InvoiceRequestContents, InvoiceRequestTlvStream, InvoiceRequestTlvStreamRef};
-use crate::offers::merkle::{SignError, SignFn, SignatureTlvStream, SignatureTlvStreamRef, TaggedHash, TlvStream, WithoutSignatures, self};
+use crate::offers::invoice_macros::{invoice_accessors_common, invoice_builder_methods_common};
+use crate::offers::invoice_request::{
+	InvoiceRequest, InvoiceRequestContents, InvoiceRequestTlvStream, InvoiceRequestTlvStreamRef,
+	INVOICE_REQUEST_PAYER_ID_TYPE, INVOICE_REQUEST_TYPES, IV_BYTES as INVOICE_REQUEST_IV_BYTES,
+};
+use crate::offers::merkle::{
+	self, SignError, SignFn, SignatureTlvStream, SignatureTlvStreamRef, TaggedHash, TlvStream,
+	WithoutSignatures,
+};
 use crate::offers::nonce::Nonce;
-use crate::offers::offer::{Amount, OFFER_TYPES, OfferTlvStream, OfferTlvStreamRef, Quantity};
+use crate::offers::offer::{Amount, OfferTlvStream, OfferTlvStreamRef, Quantity, OFFER_TYPES};
 use crate::offers::parse::{Bolt12ParseError, Bolt12SemanticError, ParsedMessage};
-use crate::offers::payer::{PAYER_METADATA_TYPE, PayerTlvStream, PayerTlvStreamRef};
-use crate::offers::refund::{IV_BYTES_WITH_METADATA as REFUND_IV_BYTES_WITH_METADATA, IV_BYTES_WITHOUT_METADATA as REFUND_IV_BYTES_WITHOUT_METADATA, Refund, RefundContents};
-use crate::offers::signer::{Metadata, self};
-use crate::util::ser::{CursorReadable, HighZeroBytesDroppedBigSize, Iterable, Readable, WithoutLength, Writeable, Writer};
+use crate::offers::payer::{PayerTlvStream, PayerTlvStreamRef, PAYER_METADATA_TYPE};
+use crate::offers::refund::{
+	Refund, RefundContents, IV_BYTES_WITHOUT_METADATA as REFUND_IV_BYTES_WITHOUT_METADATA,
+	IV_BYTES_WITH_METADATA as REFUND_IV_BYTES_WITH_METADATA,
+};
+use crate::offers::signer::{self, Metadata};
+use crate::util::ser::{
+	CursorReadable, HighZeroBytesDroppedBigSize, Iterable, Readable, WithoutLength, Writeable,
+	Writer,
+};
 use crate::util::string::PrintableString;
+use bitcoin::address::Address;
+use bitcoin::constants::ChainHash;
+use bitcoin::secp256k1::schnorr::Signature;
+use bitcoin::secp256k1::{self, Keypair, PublicKey, Secp256k1};
+use bitcoin::{Network, WitnessProgram, WitnessVersion};
+use core::hash::{Hash, Hasher};
+use core::time::Duration;
 
 #[allow(unused_imports)]
 use crate::prelude::*;
@@ -210,173 +234,206 @@ pub struct DerivedSigningPubkey(pub(super) Keypair);
 impl SigningPubkeyStrategy for ExplicitSigningPubkey {}
 impl SigningPubkeyStrategy for DerivedSigningPubkey {}
 
-macro_rules! invoice_explicit_signing_pubkey_builder_methods { ($self: ident, $self_type: ty) => {
-	#[cfg_attr(c_bindings, allow(dead_code))]
-	pub(super) fn for_offer(
-		invoice_request: &'a InvoiceRequest, payment_paths: Vec<BlindedPaymentPath>,
-		created_at: Duration, payment_hash: PaymentHash, signing_pubkey: PublicKey
-	) -> Result<Self, Bolt12SemanticError> {
-		let amount_msats = Self::amount_msats(invoice_request)?;
-		let contents = InvoiceContents::ForOffer {
-			invoice_request: invoice_request.contents.clone(),
-			fields: Self::fields(
-				payment_paths, created_at, payment_hash, amount_msats, signing_pubkey
-			),
-		};
+macro_rules! invoice_explicit_signing_pubkey_builder_methods {
+	($self: ident, $self_type: ty) => {
+		#[cfg_attr(c_bindings, allow(dead_code))]
+		pub(super) fn for_offer(
+			invoice_request: &'a InvoiceRequest, payment_paths: Vec<BlindedPaymentPath>,
+			created_at: Duration, payment_hash: PaymentHash, signing_pubkey: PublicKey,
+		) -> Result<Self, Bolt12SemanticError> {
+			let amount_msats = Self::amount_msats(invoice_request)?;
+			let contents = InvoiceContents::ForOffer {
+				invoice_request: invoice_request.contents.clone(),
+				fields: Self::fields(
+					payment_paths,
+					created_at,
+					payment_hash,
+					amount_msats,
+					signing_pubkey,
+				),
+			};
 
-		Self::new(&invoice_request.bytes, contents, ExplicitSigningPubkey {})
-	}
+			Self::new(&invoice_request.bytes, contents, ExplicitSigningPubkey {})
+		}
 
-	#[cfg_attr(c_bindings, allow(dead_code))]
-	pub(super) fn for_refund(
-		refund: &'a Refund, payment_paths: Vec<BlindedPaymentPath>, created_at: Duration,
-		payment_hash: PaymentHash, signing_pubkey: PublicKey
-	) -> Result<Self, Bolt12SemanticError> {
-		let amount_msats = refund.amount_msats();
-		let contents = InvoiceContents::ForRefund {
-			refund: refund.contents.clone(),
-			fields: Self::fields(
-				payment_paths, created_at, payment_hash, amount_msats, signing_pubkey
-			),
-		};
+		#[cfg_attr(c_bindings, allow(dead_code))]
+		pub(super) fn for_refund(
+			refund: &'a Refund, payment_paths: Vec<BlindedPaymentPath>, created_at: Duration,
+			payment_hash: PaymentHash, signing_pubkey: PublicKey,
+		) -> Result<Self, Bolt12SemanticError> {
+			let amount_msats = refund.amount_msats();
+			let contents = InvoiceContents::ForRefund {
+				refund: refund.contents.clone(),
+				fields: Self::fields(
+					payment_paths,
+					created_at,
+					payment_hash,
+					amount_msats,
+					signing_pubkey,
+				),
+			};
 
-		Self::new(&refund.bytes, contents, ExplicitSigningPubkey {})
-	}
+			Self::new(&refund.bytes, contents, ExplicitSigningPubkey {})
+		}
 
-	/// Builds an unsigned [`Bolt12Invoice`] after checking for valid semantics. It can be signed by
-	/// [`UnsignedBolt12Invoice::sign`].
-	pub fn build($self: $self_type) -> Result<UnsignedBolt12Invoice, Bolt12SemanticError> {
-		#[cfg(feature = "std")] {
-			if $self.invoice.is_offer_or_refund_expired() {
-				return Err(Bolt12SemanticError::AlreadyExpired);
+		/// Builds an unsigned [`Bolt12Invoice`] after checking for valid semantics. It can be signed by
+		/// [`UnsignedBolt12Invoice::sign`].
+		pub fn build($self: $self_type) -> Result<UnsignedBolt12Invoice, Bolt12SemanticError> {
+			#[cfg(feature = "std")]
+			{
+				if $self.invoice.is_offer_or_refund_expired() {
+					return Err(Bolt12SemanticError::AlreadyExpired);
+				}
+			}
+
+			#[cfg(not(feature = "std"))]
+			{
+				if $self.invoice.is_offer_or_refund_expired_no_std($self.invoice.created_at()) {
+					return Err(Bolt12SemanticError::AlreadyExpired);
+				}
+			}
+
+			let Self { invreq_bytes, invoice, .. } = $self;
+			#[cfg(not(c_bindings))]
+			{
+				Ok(UnsignedBolt12Invoice::new(invreq_bytes, invoice))
+			}
+			#[cfg(c_bindings)]
+			{
+				Ok(UnsignedBolt12Invoice::new(invreq_bytes, invoice.clone()))
 			}
 		}
+	};
+}
 
-		#[cfg(not(feature = "std"))] {
-			if $self.invoice.is_offer_or_refund_expired_no_std($self.invoice.created_at()) {
-				return Err(Bolt12SemanticError::AlreadyExpired);
+macro_rules! invoice_derived_signing_pubkey_builder_methods {
+	($self: ident, $self_type: ty) => {
+		#[cfg_attr(c_bindings, allow(dead_code))]
+		pub(super) fn for_offer_using_keys(
+			invoice_request: &'a InvoiceRequest, payment_paths: Vec<BlindedPaymentPath>,
+			created_at: Duration, payment_hash: PaymentHash, keys: Keypair,
+		) -> Result<Self, Bolt12SemanticError> {
+			let amount_msats = Self::amount_msats(invoice_request)?;
+			let signing_pubkey = keys.public_key();
+			let contents = InvoiceContents::ForOffer {
+				invoice_request: invoice_request.contents.clone(),
+				fields: Self::fields(
+					payment_paths,
+					created_at,
+					payment_hash,
+					amount_msats,
+					signing_pubkey,
+				),
+			};
+
+			Self::new(&invoice_request.bytes, contents, DerivedSigningPubkey(keys))
+		}
+
+		#[cfg_attr(c_bindings, allow(dead_code))]
+		pub(super) fn for_refund_using_keys(
+			refund: &'a Refund, payment_paths: Vec<BlindedPaymentPath>, created_at: Duration,
+			payment_hash: PaymentHash, keys: Keypair,
+		) -> Result<Self, Bolt12SemanticError> {
+			let amount_msats = refund.amount_msats();
+			let signing_pubkey = keys.public_key();
+			let contents = InvoiceContents::ForRefund {
+				refund: refund.contents.clone(),
+				fields: Self::fields(
+					payment_paths,
+					created_at,
+					payment_hash,
+					amount_msats,
+					signing_pubkey,
+				),
+			};
+
+			Self::new(&refund.bytes, contents, DerivedSigningPubkey(keys))
+		}
+
+		/// Builds a signed [`Bolt12Invoice`] after checking for valid semantics.
+		pub fn build_and_sign<T: secp256k1::Signing>(
+			$self: $self_type, secp_ctx: &Secp256k1<T>,
+		) -> Result<Bolt12Invoice, Bolt12SemanticError> {
+			#[cfg(feature = "std")]
+			{
+				if $self.invoice.is_offer_or_refund_expired() {
+					return Err(Bolt12SemanticError::AlreadyExpired);
+				}
 			}
-		}
 
-		let Self { invreq_bytes, invoice, .. } = $self;
-		#[cfg(not(c_bindings))] {
-			Ok(UnsignedBolt12Invoice::new(invreq_bytes, invoice))
-		}
-		#[cfg(c_bindings)] {
-			Ok(UnsignedBolt12Invoice::new(invreq_bytes, invoice.clone()))
-		}
-	}
-} }
-
-macro_rules! invoice_derived_signing_pubkey_builder_methods { ($self: ident, $self_type: ty) => {
-	#[cfg_attr(c_bindings, allow(dead_code))]
-	pub(super) fn for_offer_using_keys(
-		invoice_request: &'a InvoiceRequest, payment_paths: Vec<BlindedPaymentPath>,
-		created_at: Duration, payment_hash: PaymentHash, keys: Keypair
-	) -> Result<Self, Bolt12SemanticError> {
-		let amount_msats = Self::amount_msats(invoice_request)?;
-		let signing_pubkey = keys.public_key();
-		let contents = InvoiceContents::ForOffer {
-			invoice_request: invoice_request.contents.clone(),
-			fields: Self::fields(
-				payment_paths, created_at, payment_hash, amount_msats, signing_pubkey
-			),
-		};
-
-		Self::new(&invoice_request.bytes, contents, DerivedSigningPubkey(keys))
-	}
-
-	#[cfg_attr(c_bindings, allow(dead_code))]
-	pub(super) fn for_refund_using_keys(
-		refund: &'a Refund, payment_paths: Vec<BlindedPaymentPath>, created_at: Duration,
-		payment_hash: PaymentHash, keys: Keypair,
-	) -> Result<Self, Bolt12SemanticError> {
-		let amount_msats = refund.amount_msats();
-		let signing_pubkey = keys.public_key();
-		let contents = InvoiceContents::ForRefund {
-			refund: refund.contents.clone(),
-			fields: Self::fields(
-				payment_paths, created_at, payment_hash, amount_msats, signing_pubkey
-			),
-		};
-
-		Self::new(&refund.bytes, contents, DerivedSigningPubkey(keys))
-	}
-
-	/// Builds a signed [`Bolt12Invoice`] after checking for valid semantics.
-	pub fn build_and_sign<T: secp256k1::Signing>(
-		$self: $self_type, secp_ctx: &Secp256k1<T>
-	) -> Result<Bolt12Invoice, Bolt12SemanticError> {
-		#[cfg(feature = "std")] {
-			if $self.invoice.is_offer_or_refund_expired() {
-				return Err(Bolt12SemanticError::AlreadyExpired);
+			#[cfg(not(feature = "std"))]
+			{
+				if $self.invoice.is_offer_or_refund_expired_no_std($self.invoice.created_at()) {
+					return Err(Bolt12SemanticError::AlreadyExpired);
+				}
 			}
+
+			let Self { invreq_bytes, invoice, signing_pubkey_strategy: DerivedSigningPubkey(keys) } =
+				$self;
+			#[cfg(not(c_bindings))]
+			let unsigned_invoice = UnsignedBolt12Invoice::new(invreq_bytes, invoice);
+			#[cfg(c_bindings)]
+			let mut unsigned_invoice = UnsignedBolt12Invoice::new(invreq_bytes, invoice.clone());
+
+			let invoice = unsigned_invoice
+				.sign(|message: &UnsignedBolt12Invoice| {
+					Ok(secp_ctx.sign_schnorr_no_aux_rand(message.as_ref().as_digest(), &keys))
+				})
+				.unwrap();
+			Ok(invoice)
 		}
+	};
+}
 
-		#[cfg(not(feature = "std"))] {
-			if $self.invoice.is_offer_or_refund_expired_no_std($self.invoice.created_at()) {
-				return Err(Bolt12SemanticError::AlreadyExpired);
-			}
-		}
-
-		let Self {
-			invreq_bytes, invoice, signing_pubkey_strategy: DerivedSigningPubkey(keys)
-		} = $self;
-		#[cfg(not(c_bindings))]
-		let unsigned_invoice = UnsignedBolt12Invoice::new(invreq_bytes, invoice);
-		#[cfg(c_bindings)]
-		let mut unsigned_invoice = UnsignedBolt12Invoice::new(invreq_bytes, invoice.clone());
-
-		let invoice = unsigned_invoice
-			.sign(|message: &UnsignedBolt12Invoice|
-				Ok(secp_ctx.sign_schnorr_no_aux_rand(message.as_ref().as_digest(), &keys))
-			)
-			.unwrap();
-		Ok(invoice)
-	}
-} }
-
-macro_rules! invoice_builder_methods { (
+macro_rules! invoice_builder_methods {
+	(
 	$self: ident, $self_type: ty, $return_type: ty, $return_value: expr, $type_param: ty $(, $self_mut: tt)?
 ) => {
-	pub(crate) fn amount_msats(
-		invoice_request: &InvoiceRequest
-	) -> Result<u64, Bolt12SemanticError> {
-		match invoice_request.amount_msats() {
-			Some(amount_msats) => Ok(amount_msats),
-			None => match invoice_request.contents.inner.offer.amount() {
-				Some(Amount::Bitcoin { amount_msats }) => {
-					amount_msats.checked_mul(invoice_request.quantity().unwrap_or(1))
-						.ok_or(Bolt12SemanticError::InvalidAmount)
+		pub(crate) fn amount_msats(
+			invoice_request: &InvoiceRequest,
+		) -> Result<u64, Bolt12SemanticError> {
+			match invoice_request.amount_msats() {
+				Some(amount_msats) => Ok(amount_msats),
+				None => match invoice_request.contents.inner.offer.amount() {
+					Some(Amount::Bitcoin { amount_msats }) => amount_msats
+						.checked_mul(invoice_request.quantity().unwrap_or(1))
+						.ok_or(Bolt12SemanticError::InvalidAmount),
+					Some(Amount::Currency { .. }) => Err(Bolt12SemanticError::UnsupportedCurrency),
+					None => Err(Bolt12SemanticError::MissingAmount),
 				},
-				Some(Amount::Currency { .. }) => Err(Bolt12SemanticError::UnsupportedCurrency),
-				None => Err(Bolt12SemanticError::MissingAmount),
-			},
-		}
-	}
-
-	#[cfg_attr(c_bindings, allow(dead_code))]
-	fn fields(
-		payment_paths: Vec<BlindedPaymentPath>, created_at: Duration, payment_hash: PaymentHash,
-		amount_msats: u64, signing_pubkey: PublicKey
-	) -> InvoiceFields {
-		InvoiceFields {
-			payment_paths, created_at, relative_expiry: None, payment_hash, amount_msats,
-			fallbacks: None, features: Bolt12InvoiceFeatures::empty(), signing_pubkey,
-		}
-	}
-
-	#[cfg_attr(c_bindings, allow(dead_code))]
-	fn new(
-		invreq_bytes: &'a Vec<u8>, contents: InvoiceContents, signing_pubkey_strategy: $type_param
-	) -> Result<Self, Bolt12SemanticError> {
-		if contents.fields().payment_paths.is_empty() {
-			return Err(Bolt12SemanticError::MissingPaths);
+			}
 		}
 
-		Ok(Self { invreq_bytes, invoice: contents, signing_pubkey_strategy })
-	}
-} }
+		#[cfg_attr(c_bindings, allow(dead_code))]
+		fn fields(
+			payment_paths: Vec<BlindedPaymentPath>, created_at: Duration,
+			payment_hash: PaymentHash, amount_msats: u64, signing_pubkey: PublicKey,
+		) -> InvoiceFields {
+			InvoiceFields {
+				payment_paths,
+				created_at,
+				relative_expiry: None,
+				payment_hash,
+				amount_msats,
+				fallbacks: None,
+				features: Bolt12InvoiceFeatures::empty(),
+				signing_pubkey,
+			}
+		}
+
+		#[cfg_attr(c_bindings, allow(dead_code))]
+		fn new(
+			invreq_bytes: &'a Vec<u8>, contents: InvoiceContents,
+			signing_pubkey_strategy: $type_param,
+		) -> Result<Self, Bolt12SemanticError> {
+			if contents.fields().payment_paths.is_empty() {
+				return Err(Bolt12SemanticError::MissingPaths);
+			}
+
+			Ok(Self { invreq_bytes, invoice: contents, signing_pubkey_strategy })
+		}
+	};
+}
 
 impl<'a> InvoiceBuilder<'a, ExplicitSigningPubkey> {
 	invoice_explicit_signing_pubkey_builder_methods!(self, Self);
@@ -388,7 +445,15 @@ impl<'a> InvoiceBuilder<'a, DerivedSigningPubkey> {
 
 impl<'a, S: SigningPubkeyStrategy> InvoiceBuilder<'a, S> {
 	invoice_builder_methods!(self, Self, Self, self, S, mut);
-	invoice_builder_methods_common!(self, Self, self.invoice.fields_mut(), Self, self, Bolt12Invoice, mut);
+	invoice_builder_methods_common!(
+		self,
+		Self,
+		self.invoice.fields_mut(),
+		Self,
+		self,
+		Bolt12Invoice,
+		mut
+	);
 
 	#[cfg(test)]
 	invoice_builder_methods_test!(self, Self, self.invoice.fields_mut(), Self, self, mut);
@@ -398,14 +463,28 @@ impl<'a, S: SigningPubkeyStrategy> InvoiceBuilder<'a, S> {
 impl<'a> InvoiceWithExplicitSigningPubkeyBuilder<'a> {
 	invoice_explicit_signing_pubkey_builder_methods!(self, &mut Self);
 	invoice_builder_methods!(self, &mut Self, (), (), ExplicitSigningPubkey);
-	invoice_builder_methods_common!(self, &mut Self, self.invoice.fields_mut(), (), (), Bolt12Invoice);
+	invoice_builder_methods_common!(
+		self,
+		&mut Self,
+		self.invoice.fields_mut(),
+		(),
+		(),
+		Bolt12Invoice
+	);
 }
 
 #[cfg(all(c_bindings, test))]
 impl<'a> InvoiceWithExplicitSigningPubkeyBuilder<'a> {
 	invoice_explicit_signing_pubkey_builder_methods!(self, &mut Self);
 	invoice_builder_methods!(self, &mut Self, &mut Self, self, ExplicitSigningPubkey);
-	invoice_builder_methods_common!(self, &mut Self, self.invoice.fields_mut(), &mut Self, self, Bolt12Invoice);
+	invoice_builder_methods_common!(
+		self,
+		&mut Self,
+		self.invoice.fields_mut(),
+		&mut Self,
+		self,
+		Bolt12Invoice
+	);
 	invoice_builder_methods_test!(self, &mut Self, self.invoice.fields_mut(), &mut Self, self);
 }
 
@@ -413,42 +492,58 @@ impl<'a> InvoiceWithExplicitSigningPubkeyBuilder<'a> {
 impl<'a> InvoiceWithDerivedSigningPubkeyBuilder<'a> {
 	invoice_derived_signing_pubkey_builder_methods!(self, &mut Self);
 	invoice_builder_methods!(self, &mut Self, (), (), DerivedSigningPubkey);
-	invoice_builder_methods_common!(self, &mut Self, self.invoice.fields_mut(), (), (), Bolt12Invoice);
+	invoice_builder_methods_common!(
+		self,
+		&mut Self,
+		self.invoice.fields_mut(),
+		(),
+		(),
+		Bolt12Invoice
+	);
 }
 
 #[cfg(all(c_bindings, test))]
 impl<'a> InvoiceWithDerivedSigningPubkeyBuilder<'a> {
 	invoice_derived_signing_pubkey_builder_methods!(self, &mut Self);
 	invoice_builder_methods!(self, &mut Self, &mut Self, self, DerivedSigningPubkey);
-	invoice_builder_methods_common!(self, &mut Self, self.invoice.fields_mut(), &mut Self, self, Bolt12Invoice);
+	invoice_builder_methods_common!(
+		self,
+		&mut Self,
+		self.invoice.fields_mut(),
+		&mut Self,
+		self,
+		Bolt12Invoice
+	);
 	invoice_builder_methods_test!(self, &mut Self, self.invoice.fields_mut(), &mut Self, self);
 }
 
 #[cfg(c_bindings)]
 impl<'a> From<InvoiceWithExplicitSigningPubkeyBuilder<'a>>
-for InvoiceBuilder<'a, ExplicitSigningPubkey> {
+	for InvoiceBuilder<'a, ExplicitSigningPubkey>
+{
 	fn from(builder: InvoiceWithExplicitSigningPubkeyBuilder<'a>) -> Self {
 		let InvoiceWithExplicitSigningPubkeyBuilder {
-			invreq_bytes, invoice, signing_pubkey_strategy,
+			invreq_bytes,
+			invoice,
+			signing_pubkey_strategy,
 		} = builder;
 
-		Self {
-			invreq_bytes, invoice, signing_pubkey_strategy,
-		}
+		Self { invreq_bytes, invoice, signing_pubkey_strategy }
 	}
 }
 
 #[cfg(c_bindings)]
 impl<'a> From<InvoiceWithDerivedSigningPubkeyBuilder<'a>>
-for InvoiceBuilder<'a, DerivedSigningPubkey> {
+	for InvoiceBuilder<'a, DerivedSigningPubkey>
+{
 	fn from(builder: InvoiceWithDerivedSigningPubkeyBuilder<'a>) -> Self {
 		let InvoiceWithDerivedSigningPubkeyBuilder {
-			invreq_bytes, invoice, signing_pubkey_strategy,
+			invreq_bytes,
+			invoice,
+			signing_pubkey_strategy,
 		} = builder;
 
-		Self {
-			invreq_bytes, invoice, signing_pubkey_strategy,
-		}
+		Self { invreq_bytes, invoice, signing_pubkey_strategy }
 	}
 }
 
@@ -588,17 +683,11 @@ enum InvoiceContents {
 	/// Contents for an [`Bolt12Invoice`] corresponding to an [`Offer`].
 	///
 	/// [`Offer`]: crate::offers::offer::Offer
-	ForOffer {
-		invoice_request: InvoiceRequestContents,
-		fields: InvoiceFields,
-	},
+	ForOffer { invoice_request: InvoiceRequestContents, fields: InvoiceFields },
 	/// Contents for an [`Bolt12Invoice`] corresponding to a [`Refund`].
 	///
 	/// [`Refund`]: crate::offers::refund::Refund
-	ForRefund {
-		refund: RefundContents,
-		fields: InvoiceFields,
-	},
+	ForRefund { refund: RefundContents, fields: InvoiceFields },
 }
 
 /// Invoice-specific fields for an `invoice` message.
@@ -785,7 +874,7 @@ impl Bolt12Invoice {
 	///
 	/// Returns the associated [`PaymentId`] to use when sending the payment.
 	pub fn verify_using_metadata<T: secp256k1::Signing>(
-		&self, key: &ExpandedKey, secp_ctx: &Secp256k1<T>
+		&self, key: &ExpandedKey, secp_ctx: &Secp256k1<T>,
 	) -> Result<PaymentId, ()> {
 		let (metadata, iv_bytes) = match &self.contents {
 			InvoiceContents::ForOffer { invoice_request, .. } => {
@@ -802,28 +891,31 @@ impl Bolt12Invoice {
 	/// checking a payment id and nonce included with the [`BlindedMessagePath`] for which the invoice was
 	/// sent through.
 	pub fn verify_using_payer_data<T: secp256k1::Signing>(
-		&self, payment_id: PaymentId, nonce: Nonce, key: &ExpandedKey, secp_ctx: &Secp256k1<T>
+		&self, payment_id: PaymentId, nonce: Nonce, key: &ExpandedKey, secp_ctx: &Secp256k1<T>,
 	) -> Result<PaymentId, ()> {
 		let metadata = Metadata::payer_data(payment_id, nonce, key);
 		let iv_bytes = match &self.contents {
 			InvoiceContents::ForOffer { .. } => INVOICE_REQUEST_IV_BYTES,
 			InvoiceContents::ForRefund { .. } => REFUND_IV_BYTES_WITHOUT_METADATA,
 		};
-		self.contents.verify(TlvStream::new(&self.bytes), &metadata, key, iv_bytes, secp_ctx)
-			.and_then(|extracted_payment_id| (payment_id == extracted_payment_id)
-				.then(|| payment_id)
-				.ok_or(())
-			)
+		self.contents
+			.verify(TlvStream::new(&self.bytes), &metadata, key, iv_bytes, secp_ctx)
+			.and_then(|extracted_payment_id| {
+				(payment_id == extracted_payment_id).then(|| payment_id).ok_or(())
+			})
 	}
 
 	pub(crate) fn as_tlv_stream(&self) -> FullInvoiceTlvStreamRef {
 		let (payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream) =
 			self.contents.as_tlv_stream();
-		let signature_tlv_stream = SignatureTlvStreamRef {
-			signature: Some(&self.signature),
-		};
-		(payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream,
-		 signature_tlv_stream)
+		let signature_tlv_stream = SignatureTlvStreamRef { signature: Some(&self.signature) };
+		(
+			payer_tlv_stream,
+			offer_tlv_stream,
+			invoice_request_tlv_stream,
+			invoice_tlv_stream,
+			signature_tlv_stream,
+		)
 	}
 
 	pub(crate) fn is_for_refund_without_paths(&self) -> bool {
@@ -853,8 +945,9 @@ impl InvoiceContents {
 	#[cfg(feature = "std")]
 	fn is_offer_or_refund_expired(&self) -> bool {
 		match self {
-			InvoiceContents::ForOffer { invoice_request, .. } =>
-				invoice_request.inner.offer.is_expired(),
+			InvoiceContents::ForOffer { invoice_request, .. } => {
+				invoice_request.inner.offer.is_expired()
+			},
 			InvoiceContents::ForRefund { refund, .. } => refund.is_expired(),
 		}
 	}
@@ -862,17 +955,20 @@ impl InvoiceContents {
 	#[cfg(not(feature = "std"))]
 	fn is_offer_or_refund_expired_no_std(&self, duration_since_epoch: Duration) -> bool {
 		match self {
-			InvoiceContents::ForOffer { invoice_request, .. } =>
-				invoice_request.inner.offer.is_expired_no_std(duration_since_epoch),
-			InvoiceContents::ForRefund { refund, .. } =>
-				refund.is_expired_no_std(duration_since_epoch),
+			InvoiceContents::ForOffer { invoice_request, .. } => {
+				invoice_request.inner.offer.is_expired_no_std(duration_since_epoch)
+			},
+			InvoiceContents::ForRefund { refund, .. } => {
+				refund.is_expired_no_std(duration_since_epoch)
+			},
 		}
 	}
 
 	fn offer_chains(&self) -> Option<Vec<ChainHash>> {
 		match self {
-			InvoiceContents::ForOffer { invoice_request, .. } =>
-				Some(invoice_request.inner.offer.chains()),
+			InvoiceContents::ForOffer { invoice_request, .. } => {
+				Some(invoice_request.inner.offer.chains())
+			},
 			InvoiceContents::ForRefund { .. } => None,
 		}
 	}
@@ -886,16 +982,18 @@ impl InvoiceContents {
 
 	fn metadata(&self) -> Option<&Vec<u8>> {
 		match self {
-			InvoiceContents::ForOffer { invoice_request, .. } =>
-				invoice_request.inner.offer.metadata(),
+			InvoiceContents::ForOffer { invoice_request, .. } => {
+				invoice_request.inner.offer.metadata()
+			},
 			InvoiceContents::ForRefund { .. } => None,
 		}
 	}
 
 	fn amount(&self) -> Option<Amount> {
 		match self {
-			InvoiceContents::ForOffer { invoice_request, .. } =>
-				invoice_request.inner.offer.amount(),
+			InvoiceContents::ForOffer { invoice_request, .. } => {
+				invoice_request.inner.offer.amount()
+			},
 			InvoiceContents::ForRefund { .. } => None,
 		}
 	}
@@ -1015,7 +1113,8 @@ impl InvoiceContents {
 	}
 
 	fn fallbacks(&self) -> Vec<Address> {
-		self.fields().fallbacks
+		self.fields()
+			.fallbacks
 			.as_ref()
 			.map(|fallbacks| filter_fallbacks(self.chain(), fallbacks))
 			.unwrap_or_default()
@@ -1045,7 +1144,7 @@ impl InvoiceContents {
 
 	fn verify<T: secp256k1::Signing>(
 		&self, tlv_stream: TlvStream<'_>, metadata: &Metadata, key: &ExpandedKey,
-		iv_bytes: &[u8; IV_LEN], secp_ctx: &Secp256k1<T>
+		iv_bytes: &[u8; IV_LEN], secp_ctx: &Secp256k1<T>,
 	) -> Result<PaymentId, ()> {
 		let offer_records = tlv_stream.clone().range(OFFER_TYPES);
 		let invreq_records = tlv_stream.range(INVOICE_REQUEST_TYPES).filter(|record| {
@@ -1059,7 +1158,12 @@ impl InvoiceContents {
 
 		let payer_id = self.payer_id();
 		signer::verify_payer_metadata(
-			metadata.as_ref(), key, iv_bytes, payer_id, tlv_stream, secp_ctx,
+			metadata.as_ref(),
+			key,
+			iv_bytes,
+			payer_id,
+			tlv_stream,
+			secp_ctx,
 		)
 	}
 
@@ -1086,9 +1190,7 @@ pub(super) fn is_expired(created_at: Duration, relative_expiry: Duration) -> boo
 	}
 }
 
-pub(super) fn filter_fallbacks(
-	chain: ChainHash, fallbacks: &Vec<FallbackAddress>
-) -> Vec<Address> {
+pub(super) fn filter_fallbacks(chain: ChainHash, fallbacks: &Vec<FallbackAddress>) -> Vec<Address> {
 	let network = if chain == ChainHash::using_genesis_block(Network::Bitcoin) {
 		Network::Bitcoin
 	} else if chain == ChainHash::using_genesis_block(Network::Testnet) {
@@ -1098,7 +1200,7 @@ pub(super) fn filter_fallbacks(
 	} else if chain == ChainHash::using_genesis_block(Network::Regtest) {
 		Network::Regtest
 	} else {
-		return Vec::new()
+		return Vec::new();
 	};
 
 	let to_valid_address = |address: &FallbackAddress| {
@@ -1120,8 +1222,11 @@ pub(super) fn filter_fallbacks(
 impl InvoiceFields {
 	fn as_tlv_stream(&self) -> InvoiceTlvStreamRef {
 		let features = {
-			if self.features == Bolt12InvoiceFeatures::empty() { None }
-			else { Some(&self.features) }
+			if self.features == Bolt12InvoiceFeatures::empty() {
+				None
+			} else {
+				Some(&self.features)
+			}
 		};
 
 		InvoiceTlvStreamRef {
@@ -1170,12 +1275,14 @@ impl TryFrom<Vec<u8>> for UnsignedBolt12Invoice {
 	fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
 		let invoice = ParsedMessage::<PartialInvoiceTlvStream>::try_from(bytes)?;
 		let ParsedMessage { bytes, tlv_stream } = invoice;
-		let (
-			payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream,
-		) = tlv_stream;
-		let contents = InvoiceContents::try_from(
-			(payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream)
-		)?;
+		let (payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream) =
+			tlv_stream;
+		let contents = InvoiceContents::try_from((
+			payer_tlv_stream,
+			offer_tlv_stream,
+			invoice_request_tlv_stream,
+			invoice_tlv_stream,
+		))?;
 
 		let tagged_hash = TaggedHash::from_valid_tlv_stream_bytes(SIGNATURE_TAG, &bytes);
 
@@ -1275,16 +1382,21 @@ impl TryFrom<ParsedMessage<FullInvoiceTlvStream>> for Bolt12Invoice {
 	fn try_from(invoice: ParsedMessage<FullInvoiceTlvStream>) -> Result<Self, Self::Error> {
 		let ParsedMessage { bytes, tlv_stream } = invoice;
 		let (
-			payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream,
+			payer_tlv_stream,
+			offer_tlv_stream,
+			invoice_request_tlv_stream,
+			invoice_tlv_stream,
 			SignatureTlvStream { signature },
 		) = tlv_stream;
-		let contents = InvoiceContents::try_from(
-			(payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream, invoice_tlv_stream)
-		)?;
+		let contents = InvoiceContents::try_from((
+			payer_tlv_stream,
+			offer_tlv_stream,
+			invoice_request_tlv_stream,
+			invoice_tlv_stream,
+		))?;
 
-		let signature = signature.ok_or(
-			Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingSignature)
-		)?;
+		let signature = signature
+			.ok_or(Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingSignature))?;
 		let tagged_hash = TaggedHash::from_valid_tlv_stream_bytes(SIGNATURE_TAG, &bytes);
 		let pubkey = contents.fields().signing_pubkey;
 		merkle::verify_signature(&signature, &tagged_hash, pubkey)?;
@@ -1302,12 +1414,22 @@ impl TryFrom<PartialInvoiceTlvStream> for InvoiceContents {
 			offer_tlv_stream,
 			invoice_request_tlv_stream,
 			InvoiceTlvStream {
-				paths, blindedpay, created_at, relative_expiry, payment_hash, amount, fallbacks,
-				features, node_id, message_paths,
+				paths,
+				blindedpay,
+				created_at,
+				relative_expiry,
+				payment_hash,
+				amount,
+				fallbacks,
+				features,
+				node_id,
+				message_paths,
 			},
 		) = tlv_stream;
 
-		if message_paths.is_some() { return Err(Bolt12SemanticError::UnexpectedPaths) }
+		if message_paths.is_some() {
+			return Err(Bolt12SemanticError::UnexpectedPaths);
+		}
 
 		let payment_paths = construct_payment_paths(blindedpay, paths)?;
 
@@ -1316,9 +1438,7 @@ impl TryFrom<PartialInvoiceTlvStream> for InvoiceContents {
 			Some(timestamp) => Duration::from_secs(timestamp),
 		};
 
-		let relative_expiry = relative_expiry
-			.map(Into::<u64>::into)
-			.map(Duration::from_secs);
+		let relative_expiry = relative_expiry.map(Into::<u64>::into).map(Duration::from_secs);
 
 		let payment_hash = payment_hash.ok_or(Bolt12SemanticError::MissingPaymentHash)?;
 
@@ -1329,28 +1449,38 @@ impl TryFrom<PartialInvoiceTlvStream> for InvoiceContents {
 		let signing_pubkey = node_id.ok_or(Bolt12SemanticError::MissingSigningPubkey)?;
 
 		let fields = InvoiceFields {
-			payment_paths, created_at, relative_expiry, payment_hash, amount_msats, fallbacks,
-			features, signing_pubkey,
+			payment_paths,
+			created_at,
+			relative_expiry,
+			payment_hash,
+			amount_msats,
+			fallbacks,
+			features,
+			signing_pubkey,
 		};
 
 		check_invoice_signing_pubkey(&fields.signing_pubkey, &offer_tlv_stream)?;
 
 		if offer_tlv_stream.node_id.is_none() && offer_tlv_stream.paths.is_none() {
-			let refund = RefundContents::try_from(
-				(payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream)
-			)?;
+			let refund = RefundContents::try_from((
+				payer_tlv_stream,
+				offer_tlv_stream,
+				invoice_request_tlv_stream,
+			))?;
 			Ok(InvoiceContents::ForRefund { refund, fields })
 		} else {
-			let invoice_request = InvoiceRequestContents::try_from(
-				(payer_tlv_stream, offer_tlv_stream, invoice_request_tlv_stream)
-			)?;
+			let invoice_request = InvoiceRequestContents::try_from((
+				payer_tlv_stream,
+				offer_tlv_stream,
+				invoice_request_tlv_stream,
+			))?;
 			Ok(InvoiceContents::ForOffer { invoice_request, fields })
 		}
 	}
 }
 
 pub(super) fn construct_payment_paths(
-	blinded_payinfos: Option<Vec<BlindedPayInfo>>, blinded_paths: Option<Vec<BlindedPath>>
+	blinded_payinfos: Option<Vec<BlindedPayInfo>>, blinded_paths: Option<Vec<BlindedPath>>,
 ) -> Result<Vec<BlindedPaymentPath>, Bolt12SemanticError> {
 	match (blinded_payinfos, blinded_paths) {
 		(_, None) => Err(Bolt12SemanticError::MissingPaths),
@@ -1359,19 +1489,16 @@ pub(super) fn construct_payment_paths(
 		(Some(blindedpay), Some(paths)) if paths.len() != blindedpay.len() => {
 			Err(Bolt12SemanticError::InvalidPayInfo)
 		},
-		(Some(blindedpay), Some(paths)) => {
-			Ok(blindedpay
-				.into_iter()
-				.zip(paths.into_iter())
-				.map(|(payinfo, path)| BlindedPaymentPath::from_parts(path, payinfo))
-				.collect::<Vec<_>>()
-			)
-		},
+		(Some(blindedpay), Some(paths)) => Ok(blindedpay
+			.into_iter()
+			.zip(paths.into_iter())
+			.map(|(payinfo, path)| BlindedPaymentPath::from_parts(path, payinfo))
+			.collect::<Vec<_>>()),
 	}
 }
 
 pub(super) fn check_invoice_signing_pubkey(
-	invoice_signing_pubkey: &PublicKey, offer_tlv_stream: &OfferTlvStream
+	invoice_signing_pubkey: &PublicKey, offer_tlv_stream: &OfferTlvStream,
 ) -> Result<(), Bolt12SemanticError> {
 	match (&offer_tlv_stream.node_id, &offer_tlv_stream.paths) {
 		(Some(expected_signing_pubkey), _) => {
@@ -1395,45 +1522,45 @@ pub(super) fn check_invoice_signing_pubkey(
 
 #[cfg(test)]
 mod tests {
-	use super::{Bolt12Invoice, DEFAULT_RELATIVE_EXPIRY, FallbackAddress, FullInvoiceTlvStreamRef, InvoiceTlvStreamRef, SIGNATURE_TAG, UnsignedBolt12Invoice};
+	use super::{
+		Bolt12Invoice, FallbackAddress, FullInvoiceTlvStreamRef, InvoiceTlvStreamRef,
+		UnsignedBolt12Invoice, DEFAULT_RELATIVE_EXPIRY, SIGNATURE_TAG,
+	};
 
-	use bitcoin::{CompressedPublicKey, WitnessProgram, WitnessVersion};
-	use bitcoin::constants::ChainHash;
-	use bitcoin::script::ScriptBuf;
-	use bitcoin::hashes::Hash;
-	use bitcoin::network::Network;
-	use bitcoin::secp256k1::{Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey, self};
 	use bitcoin::address::Address;
+	use bitcoin::constants::ChainHash;
+	use bitcoin::hashes::Hash;
 	use bitcoin::key::TweakedPublicKey;
+	use bitcoin::network::Network;
+	use bitcoin::script::ScriptBuf;
+	use bitcoin::secp256k1::{self, Keypair, Message, Secp256k1, SecretKey, XOnlyPublicKey};
+	use bitcoin::{CompressedPublicKey, WitnessProgram, WitnessVersion};
 
 	use core::time::Duration;
 
-	use crate::blinded_path::BlindedHop;
 	use crate::blinded_path::message::BlindedMessagePath;
-	use crate::sign::KeyMaterial;
+	use crate::blinded_path::BlindedHop;
 	use crate::ln::features::{Bolt12InvoiceFeatures, InvoiceRequestFeatures, OfferFeatures};
 	use crate::ln::inbound_payment::ExpandedKey;
 	use crate::ln::msgs::DecodeError;
 	use crate::offers::invoice_request::InvoiceRequestTlvStreamRef;
-	use crate::offers::merkle::{SignError, SignatureTlvStreamRef, TaggedHash, self};
+	use crate::offers::merkle::{self, SignError, SignatureTlvStreamRef, TaggedHash};
 	use crate::offers::nonce::Nonce;
 	use crate::offers::offer::{Amount, OfferTlvStreamRef, Quantity};
+	use crate::offers::parse::{Bolt12ParseError, Bolt12SemanticError};
+	use crate::offers::payer::PayerTlvStreamRef;
+	use crate::offers::test_utils::*;
 	use crate::prelude::*;
+	use crate::sign::KeyMaterial;
+	use crate::util::ser::{BigSize, Iterable, Writeable};
+	use crate::util::string::PrintableString;
 	#[cfg(not(c_bindings))]
-	use {
-		crate::offers::offer::OfferBuilder,
-		crate::offers::refund::RefundBuilder,
-	};
+	use {crate::offers::offer::OfferBuilder, crate::offers::refund::RefundBuilder};
 	#[cfg(c_bindings)]
 	use {
 		crate::offers::offer::OfferWithExplicitMetadataBuilder as OfferBuilder,
 		crate::offers::refund::RefundMaybeWithDerivedMetadataBuilder as RefundBuilder,
 	};
-	use crate::offers::parse::{Bolt12ParseError, Bolt12SemanticError};
-	use crate::offers::payer::PayerTlvStreamRef;
-	use crate::offers::test_utils::*;
-	use crate::util::ser::{BigSize, Iterable, Writeable};
-	use crate::util::string::PrintableString;
 
 	trait ToBytes {
 		fn to_bytes(&self) -> Vec<u8>;
@@ -1458,19 +1585,28 @@ mod tests {
 		let now = now();
 		let unsigned_invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths.clone(), payment_hash, now).unwrap()
-			.build().unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths.clone(), payment_hash, now)
+			.unwrap()
+			.build()
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		unsigned_invoice.write(&mut buffer).unwrap();
 
 		assert_eq!(unsigned_invoice.bytes, buffer.as_slice());
 		assert_eq!(unsigned_invoice.payer_metadata(), &[1; 32]);
-		assert_eq!(unsigned_invoice.offer_chains(), Some(vec![ChainHash::using_genesis_block(Network::Bitcoin)]));
+		assert_eq!(
+			unsigned_invoice.offer_chains(),
+			Some(vec![ChainHash::using_genesis_block(Network::Bitcoin)])
+		);
 		assert_eq!(unsigned_invoice.metadata(), None);
 		assert_eq!(unsigned_invoice.amount(), Some(Amount::Bitcoin { amount_msats: 1000 }));
 		assert_eq!(unsigned_invoice.description(), Some(PrintableString("")));
@@ -1512,7 +1648,10 @@ mod tests {
 
 		assert_eq!(invoice.bytes, buffer.as_slice());
 		assert_eq!(invoice.payer_metadata(), &[1; 32]);
-		assert_eq!(invoice.offer_chains(), Some(vec![ChainHash::using_genesis_block(Network::Bitcoin)]));
+		assert_eq!(
+			invoice.offer_chains(),
+			Some(vec![ChainHash::using_genesis_block(Network::Bitcoin)])
+		);
 		assert_eq!(invoice.metadata(), None);
 		assert_eq!(invoice.amount(), Some(Amount::Bitcoin { amount_msats: 1000 }));
 		assert_eq!(invoice.description(), Some(PrintableString("")));
@@ -1573,7 +1712,9 @@ mod tests {
 					paths: None,
 				},
 				InvoiceTlvStreamRef {
-					paths: Some(Iterable(payment_paths.iter().map(|path| path.inner_blinded_path()))),
+					paths: Some(Iterable(
+						payment_paths.iter().map(|path| path.inner_blinded_path())
+					)),
 					blindedpay: Some(Iterable(payment_paths.iter().map(|path| &path.payinfo))),
 					created_at: Some(now.as_secs()),
 					relative_expiry: None,
@@ -1598,12 +1739,16 @@ mod tests {
 		let payment_paths = payment_paths();
 		let payment_hash = payment_hash();
 		let now = now();
-		let invoice = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000).unwrap()
-			.build().unwrap()
+		let invoice = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000)
+			.unwrap()
+			.build()
+			.unwrap()
 			.respond_with_no_std(payment_paths.clone(), payment_hash, recipient_pubkey(), now)
 			.unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -1666,7 +1811,9 @@ mod tests {
 					paths: None,
 				},
 				InvoiceTlvStreamRef {
-					paths: Some(Iterable(payment_paths.iter().map(|path| path.inner_blinded_path()))),
+					paths: Some(Iterable(
+						payment_paths.iter().map(|path| path.inner_blinded_path())
+					)),
 					blindedpay: Some(Iterable(payment_paths.iter().map(|path| &path.payinfo))),
 					created_at: Some(now.as_secs()),
 					relative_expiry: None,
@@ -1695,10 +1842,14 @@ mod tests {
 		if let Err(e) = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
 			.absolute_expiry(future_expiry)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
 			.respond_with(payment_paths(), payment_hash())
 			.unwrap()
 			.build()
@@ -1709,10 +1860,13 @@ mod tests {
 		match OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
 			.absolute_expiry(past_expiry)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
 			.build_unchecked()
-			.sign(payer_sign).unwrap()
+			.sign(payer_sign)
+			.unwrap()
 			.respond_with(payment_paths(), payment_hash())
 			.unwrap()
 			.build()
@@ -1728,9 +1882,11 @@ mod tests {
 		let future_expiry = Duration::from_secs(u64::max_value());
 		let past_expiry = Duration::from_secs(0);
 
-		if let Err(e) = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000).unwrap()
+		if let Err(e) = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000)
+			.unwrap()
 			.absolute_expiry(future_expiry)
-			.build().unwrap()
+			.build()
+			.unwrap()
 			.respond_with(payment_paths(), payment_hash(), recipient_pubkey())
 			.unwrap()
 			.build()
@@ -1738,9 +1894,11 @@ mod tests {
 			panic!("error building invoice: {:?}", e);
 		}
 
-		match RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000).unwrap()
+		match RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000)
+			.unwrap()
 			.absolute_expiry(past_expiry)
-			.build().unwrap()
+			.build()
+			.unwrap()
 			.respond_with(payment_paths(), payment_hash(), recipient_pubkey())
 			.unwrap()
 			.build()
@@ -1759,11 +1917,12 @@ mod tests {
 		let secp_ctx = Secp256k1::new();
 
 		let blinded_path = BlindedMessagePath::from_raw(
-			pubkey(40), pubkey(41),
+			pubkey(40),
+			pubkey(41),
 			vec![
 				BlindedHop { blinded_node_id: pubkey(42), encrypted_payload: vec![0; 43] },
 				BlindedHop { blinded_node_id: node_id, encrypted_payload: vec![0; 44] },
-			]
+			],
 		);
 
 		#[cfg(c_bindings)]
@@ -1771,34 +1930,48 @@ mod tests {
 		let offer = OfferBuilder::deriving_signing_pubkey(node_id, &expanded_key, nonce, &secp_ctx)
 			.amount_msats(1000)
 			.path(blinded_path)
-			.build().unwrap();
-		let invoice_request = offer.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap();
+			.build()
+			.unwrap();
+		let invoice_request = offer
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap();
 
-		if let Err(e) = invoice_request.clone()
-			.verify_using_recipient_data(nonce, &expanded_key, &secp_ctx).unwrap()
-			.respond_using_derived_keys_no_std(payment_paths(), payment_hash(), now()).unwrap()
+		if let Err(e) = invoice_request
+			.clone()
+			.verify_using_recipient_data(nonce, &expanded_key, &secp_ctx)
+			.unwrap()
+			.respond_using_derived_keys_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
 			.build_and_sign(&secp_ctx)
 		{
 			panic!("error building invoice: {:?}", e);
 		}
 
 		let expanded_key = ExpandedKey::new(&KeyMaterial([41; 32]));
-		assert!(
-			invoice_request.verify_using_recipient_data(nonce, &expanded_key, &secp_ctx).is_err()
-		);
+		assert!(invoice_request
+			.verify_using_recipient_data(nonce, &expanded_key, &secp_ctx)
+			.is_err());
 
 		let offer = OfferBuilder::deriving_signing_pubkey(node_id, &expanded_key, nonce, &secp_ctx)
 			.amount_msats(1000)
 			// Omit the path so that node_id is used for the signing pubkey instead of deriving
-			.build().unwrap();
-		let invoice_request = offer.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap();
+			.build()
+			.unwrap();
+		let invoice_request = offer
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap();
 
 		match invoice_request
-			.verify_using_metadata(&expanded_key, &secp_ctx).unwrap()
+			.verify_using_metadata(&expanded_key, &secp_ctx)
+			.unwrap()
 			.respond_using_derived_keys_no_std(payment_paths(), payment_hash(), now())
 		{
 			Ok(_) => panic!("expected error"),
@@ -1812,12 +1985,16 @@ mod tests {
 		let entropy = FixedEntropy {};
 		let secp_ctx = Secp256k1::new();
 
-		let refund = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000).unwrap()
-			.build().unwrap();
+		let refund =
+			RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000).unwrap().build().unwrap();
 
 		if let Err(e) = refund
 			.respond_using_derived_keys_no_std(
-				payment_paths(), payment_hash(), now(), &expanded_key, &entropy
+				payment_paths(),
+				payment_hash(),
+				now(),
+				&expanded_key,
+				&entropy,
 			)
 			.unwrap()
 			.build_and_sign(&secp_ctx)
@@ -1834,20 +2011,27 @@ mod tests {
 		let secp_ctx = Secp256k1::new();
 
 		let blinded_path = BlindedMessagePath::from_raw(
-			pubkey(40), pubkey(41),
+			pubkey(40),
+			pubkey(41),
 			vec![
 				BlindedHop { blinded_node_id: pubkey(42), encrypted_payload: vec![0; 43] },
 				BlindedHop { blinded_node_id: node_id, encrypted_payload: vec![0; 44] },
-			]
+			],
 		);
 
-		let refund = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000).unwrap()
+		let refund = RefundBuilder::new(vec![1; 32], payer_pubkey(), 1000)
+			.unwrap()
 			.path(blinded_path)
-			.build().unwrap();
+			.build()
+			.unwrap();
 
 		let invoice = refund
 			.respond_using_derived_keys_no_std(
-				payment_paths(), payment_hash(), now(), &expanded_key, &entropy
+				payment_paths(),
+				payment_hash(),
+				now(),
+				&expanded_key,
+				&entropy,
 			)
 			.unwrap()
 			.build_and_sign(&secp_ctx)
@@ -1863,14 +2047,21 @@ mod tests {
 
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now)
+			.unwrap()
 			.relative_expiry(one_hour.as_secs() as u32)
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let (_, _, _, tlv_stream, _) = invoice.as_tlv_stream();
 		#[cfg(feature = "std")]
 		assert!(!invoice.is_expired());
@@ -1879,14 +2070,21 @@ mod tests {
 
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now - one_hour).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now - one_hour)
+			.unwrap()
 			.relative_expiry(one_hour.as_secs() as u32 - 1)
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let (_, _, _, tlv_stream, _) = invoice.as_tlv_stream();
 		#[cfg(feature = "std")]
 		assert!(invoice.is_expired());
@@ -1898,14 +2096,22 @@ mod tests {
 	fn builds_invoice_with_amount_from_request() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.amount_msats(1001).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.amount_msats(1001)
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let (_, _, _, tlv_stream, _) = invoice.as_tlv_stream();
 		assert_eq!(invoice.amount_msats(), 1001);
 		assert_eq!(tlv_stream.amount, Some(1001));
@@ -1916,14 +2122,22 @@ mod tests {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
 			.supported_quantity(Quantity::Unbounded)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.quantity(2).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.quantity(2)
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let (_, _, _, tlv_stream, _) = invoice.as_tlv_stream();
 		assert_eq!(invoice.amount_msats(), 2000);
 		assert_eq!(tlv_stream.amount, Some(2000));
@@ -1931,11 +2145,15 @@ mod tests {
 		match OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
 			.supported_quantity(Quantity::Unbounded)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.quantity(u64::max_value()).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.quantity(u64::max_value())
+			.unwrap()
 			.build_unchecked()
-			.sign(payer_sign).unwrap()
+			.sign(payer_sign)
+			.unwrap()
 			.respond_with_no_std(payment_paths(), payment_hash(), now())
 		{
 			Ok(_) => panic!("expected error"),
@@ -1952,16 +2170,23 @@ mod tests {
 
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
 			.fallback_v0_p2wsh(&script.wscript_hash())
 			.fallback_v0_p2wpkh(&pubkey.wpubkey_hash().unwrap())
 			.fallback_v1_p2tr_tweaked(&tweaked_pubkey)
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let (_, _, _, tlv_stream, _) = invoice.as_tlv_stream();
 		assert_eq!(
 			invoice.fallbacks(),
@@ -1997,14 +2222,21 @@ mod tests {
 
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
 			.allow_mpp()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let (_, _, _, tlv_stream, _) = invoice.as_tlv_stream();
 		assert_eq!(invoice.invoice_features(), &features);
 		assert_eq!(tlv_stream.features, Some(&features));
@@ -2014,12 +2246,18 @@ mod tests {
 	fn fails_signing_invoice() {
 		match OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
 			.sign(fail_sign)
 		{
 			Ok(_) => panic!("expected error"),
@@ -2028,12 +2266,18 @@ mod tests {
 
 		match OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
 			.sign(payer_sign)
 		{
 			Ok(_) => panic!("expected error"),
@@ -2045,13 +2289,20 @@ mod tests {
 	fn parses_invoice_with_payment_paths() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2065,7 +2316,9 @@ mod tests {
 
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingPaths)),
+			Err(e) => {
+				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingPaths))
+			},
 		}
 
 		let mut tlv_stream = invoice.as_tlv_stream();
@@ -2073,16 +2326,22 @@ mod tests {
 
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidPayInfo)),
+			Err(e) => assert_eq!(
+				e,
+				Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidPayInfo)
+			),
 		}
 
 		let empty_payment_paths = vec![];
 		let mut tlv_stream = invoice.as_tlv_stream();
-		tlv_stream.3.paths = Some(Iterable(empty_payment_paths.iter().map(|path| path.inner_blinded_path())));
+		tlv_stream.3.paths =
+			Some(Iterable(empty_payment_paths.iter().map(|path| path.inner_blinded_path())));
 
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingPaths)),
+			Err(e) => {
+				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingPaths))
+			},
 		}
 
 		let mut payment_paths = payment_paths();
@@ -2092,7 +2351,10 @@ mod tests {
 
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidPayInfo)),
+			Err(e) => assert_eq!(
+				e,
+				Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidPayInfo)
+			),
 		}
 	}
 
@@ -2100,13 +2362,20 @@ mod tests {
 	fn parses_invoice_with_created_at() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2121,7 +2390,10 @@ mod tests {
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
 			Err(e) => {
-				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingCreationTime));
+				assert_eq!(
+					e,
+					Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingCreationTime)
+				);
 			},
 		}
 	}
@@ -2130,14 +2402,21 @@ mod tests {
 	fn parses_invoice_with_relative_expiry() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
 			.relative_expiry(3600)
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2152,13 +2431,20 @@ mod tests {
 	fn parses_invoice_with_payment_hash() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2173,7 +2459,10 @@ mod tests {
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
 			Err(e) => {
-				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingPaymentHash));
+				assert_eq!(
+					e,
+					Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingPaymentHash)
+				);
 			},
 		}
 	}
@@ -2182,13 +2471,20 @@ mod tests {
 	fn parses_invoice_with_amount() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2202,7 +2498,10 @@ mod tests {
 
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingAmount)),
+			Err(e) => assert_eq!(
+				e,
+				Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingAmount)
+			),
 		}
 	}
 
@@ -2210,14 +2509,21 @@ mod tests {
 	fn parses_invoice_with_allow_mpp() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
 			.allow_mpp()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2239,19 +2545,20 @@ mod tests {
 		let x_only_pubkey = XOnlyPublicKey::from_keypair(&recipient_keys()).0;
 		let tweaked_pubkey = TweakedPublicKey::dangerous_assume_tweaked(x_only_pubkey);
 
-		let offer = OfferBuilder::new(recipient_pubkey())
-			.amount_msats(1000)
-			.build().unwrap();
+		let offer = OfferBuilder::new(recipient_pubkey()).amount_msats(1000).build().unwrap();
 		let invoice_request = offer
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap();
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap();
 		#[cfg(not(c_bindings))]
-		let invoice_builder = invoice_request
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap();
+		let invoice_builder =
+			invoice_request.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap();
 		#[cfg(c_bindings)]
-		let mut invoice_builder = invoice_request
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap();
+		let mut invoice_builder =
+			invoice_request.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap();
 		let invoice_builder = invoice_builder
 			.fallback_v0_p2wsh(&script.wscript_hash())
 			.fallback_v0_p2wpkh(&pubkey.wpubkey_hash().unwrap())
@@ -2275,8 +2582,10 @@ mod tests {
 
 		match Bolt12Invoice::try_from(buffer) {
 			Ok(invoice) => {
-				let v1_witness_program = WitnessProgram::new(WitnessVersion::V1, &[0u8; 33]).unwrap();
-				let v2_witness_program = WitnessProgram::new(WitnessVersion::V2, &[0u8; 40]).unwrap();
+				let v1_witness_program =
+					WitnessProgram::new(WitnessVersion::V1, &[0u8; 33]).unwrap();
+				let v2_witness_program =
+					WitnessProgram::new(WitnessVersion::V2, &[0u8; 40]).unwrap();
 				assert_eq!(
 					invoice.fallbacks(),
 					vec![
@@ -2296,13 +2605,20 @@ mod tests {
 	fn parses_invoice_with_node_id() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2317,7 +2633,10 @@ mod tests {
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
 			Err(e) => {
-				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingSigningPubkey));
+				assert_eq!(
+					e,
+					Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingSigningPubkey)
+				);
 			},
 		}
 
@@ -2328,7 +2647,10 @@ mod tests {
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
 			Err(e) => {
-				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidSigningPubkey));
+				assert_eq!(
+					e,
+					Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidSigningPubkey)
+				);
 			},
 		}
 	}
@@ -2337,24 +2659,27 @@ mod tests {
 	fn parses_invoice_with_node_id_from_blinded_path() {
 		let paths = vec![
 			BlindedMessagePath::from_raw(
-				pubkey(40), pubkey(41),
+				pubkey(40),
+				pubkey(41),
 				vec![
 					BlindedHop { blinded_node_id: pubkey(43), encrypted_payload: vec![0; 43] },
 					BlindedHop { blinded_node_id: pubkey(44), encrypted_payload: vec![0; 44] },
-				]
+				],
 			),
 			BlindedMessagePath::from_raw(
-				pubkey(40), pubkey(41),
+				pubkey(40),
+				pubkey(41),
 				vec![
 					BlindedHop { blinded_node_id: pubkey(45), encrypted_payload: vec![0; 45] },
 					BlindedHop { blinded_node_id: pubkey(46), encrypted_payload: vec![0; 46] },
-				]
+				],
 			),
 		];
 
 		let blinded_node_id_sign = |message: &UnsignedBolt12Invoice| {
 			let secp_ctx = Secp256k1::new();
-			let keys = Keypair::from_secret_key(&secp_ctx, &SecretKey::from_slice(&[46; 32]).unwrap());
+			let keys =
+				Keypair::from_secret_key(&secp_ctx, &SecretKey::from_slice(&[46; 32]).unwrap());
 			Ok(secp_ctx.sign_schnorr_no_aux_rand(message.as_ref().as_digest(), &keys))
 		};
 
@@ -2363,15 +2688,25 @@ mod tests {
 			.amount_msats(1000)
 			.path(paths[0].clone())
 			.path(paths[1].clone())
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
 			.respond_with_no_std_using_signing_pubkey(
-				payment_paths(), payment_hash(), now(), pubkey(46)
-			).unwrap()
-			.build().unwrap()
-			.sign(blinded_node_id_sign).unwrap();
+				payment_paths(),
+				payment_hash(),
+				now(),
+				pubkey(46),
+			)
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(blinded_node_id_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2385,15 +2720,25 @@ mod tests {
 			.amount_msats(1000)
 			.path(paths[0].clone())
 			.path(paths[1].clone())
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
 			.respond_with_no_std_using_signing_pubkey(
-				payment_paths(), payment_hash(), now(), recipient_pubkey()
-			).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+				payment_paths(),
+				payment_hash(),
+				now(),
+				recipient_pubkey(),
+			)
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut buffer = Vec::new();
 		invoice.write(&mut buffer).unwrap();
@@ -2401,7 +2746,10 @@ mod tests {
 		match Bolt12Invoice::try_from(buffer) {
 			Ok(_) => panic!("expected error"),
 			Err(e) => {
-				assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidSigningPubkey));
+				assert_eq!(
+					e,
+					Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::InvalidSigningPubkey)
+				);
 			},
 		}
 	}
@@ -2411,18 +2759,28 @@ mod tests {
 		let mut buffer = Vec::new();
 		OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
 			.contents
-			.write(&mut buffer).unwrap();
+			.write(&mut buffer)
+			.unwrap();
 
 		match Bolt12Invoice::try_from(buffer) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingSignature)),
+			Err(e) => assert_eq!(
+				e,
+				Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::MissingSignature)
+			),
 		}
 	}
 
@@ -2430,13 +2788,20 @@ mod tests {
 	fn fails_parsing_invoice_with_invalid_signature() {
 		let mut invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 		let last_signature_byte = invoice.bytes.last_mut().unwrap();
 		*last_signature_byte = last_signature_byte.wrapping_add(1);
 
@@ -2446,7 +2811,10 @@ mod tests {
 		match Bolt12Invoice::try_from(buffer) {
 			Ok(_) => panic!("expected error"),
 			Err(e) => {
-				assert_eq!(e, Bolt12ParseError::InvalidSignature(secp256k1::Error::IncorrectSignature));
+				assert_eq!(
+					e,
+					Bolt12ParseError::InvalidSignature(secp256k1::Error::IncorrectSignature)
+				);
 			},
 		}
 	}
@@ -2455,13 +2823,20 @@ mod tests {
 	fn fails_parsing_invoice_with_extra_tlv_records() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let mut encoded_invoice = Vec::new();
 		invoice.write(&mut encoded_invoice).unwrap();
@@ -2479,20 +2854,28 @@ mod tests {
 	fn fails_parsing_invoice_with_message_paths() {
 		let invoice = OfferBuilder::new(recipient_pubkey())
 			.amount_msats(1000)
-			.build().unwrap()
-			.request_invoice(vec![1; 32], payer_pubkey()).unwrap()
-			.build().unwrap()
-			.sign(payer_sign).unwrap()
-			.respond_with_no_std(payment_paths(), payment_hash(), now()).unwrap()
-			.build().unwrap()
-			.sign(recipient_sign).unwrap();
+			.build()
+			.unwrap()
+			.request_invoice(vec![1; 32], payer_pubkey())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(payer_sign)
+			.unwrap()
+			.respond_with_no_std(payment_paths(), payment_hash(), now())
+			.unwrap()
+			.build()
+			.unwrap()
+			.sign(recipient_sign)
+			.unwrap();
 
 		let blinded_path = BlindedMessagePath::from_raw(
-			pubkey(40), pubkey(41),
+			pubkey(40),
+			pubkey(41),
 			vec![
 				BlindedHop { blinded_node_id: pubkey(42), encrypted_payload: vec![0; 43] },
 				BlindedHop { blinded_node_id: pubkey(43), encrypted_payload: vec![0; 44] },
-			]
+			],
 		);
 
 		let mut tlv_stream = invoice.as_tlv_stream();
@@ -2501,7 +2884,10 @@ mod tests {
 
 		match Bolt12Invoice::try_from(tlv_stream.to_bytes()) {
 			Ok(_) => panic!("expected error"),
-			Err(e) => assert_eq!(e, Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::UnexpectedPaths)),
+			Err(e) => assert_eq!(
+				e,
+				Bolt12ParseError::InvalidSemantics(Bolt12SemanticError::UnexpectedPaths)
+			),
 		}
 	}
 }

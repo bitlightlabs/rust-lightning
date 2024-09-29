@@ -10,44 +10,50 @@
 //! LDK sends, receives, and forwards onion messages via this [`OnionMessenger`], which lives here,
 //! as well as various types, traits, and utilities that it uses.
 
-use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::hashes::hmac::{Hmac, HmacEngine};
 use bitcoin::hashes::sha256::Hash as Sha256;
+use bitcoin::hashes::{Hash, HashEngine};
 use bitcoin::secp256k1::{self, PublicKey, Scalar, Secp256k1, SecretKey};
 
-use crate::blinded_path::{IntroductionNode, NodeIdLookUp};
-use crate::blinded_path::message::{BlindedMessagePath, MessageForwardNode, ForwardTlvs, MessageContext, NextMessageHop, ReceiveTlvs};
+#[cfg(async_payments)]
+use super::async_payments::AsyncPaymentsMessage;
+use super::async_payments::AsyncPaymentsMessageHandler;
+use super::offers::OffersMessageHandler;
+use super::packet::OnionMessageContents;
+use super::packet::ParsedOnionMessageContents;
+use super::packet::{
+	ForwardControlTlvs, Packet, Payload, ReceiveControlTlvs, BIG_PACKET_HOP_DATA_LEN,
+	SMALL_PACKET_HOP_DATA_LEN,
+};
+use crate::blinded_path::message::{
+	BlindedMessagePath, ForwardTlvs, MessageContext, MessageForwardNode, NextMessageHop,
+	ReceiveTlvs,
+};
 use crate::blinded_path::utils;
+use crate::blinded_path::{IntroductionNode, NodeIdLookUp};
 use crate::events::{Event, EventHandler, EventsProvider, ReplayEvent};
-use crate::sign::{EntropySource, NodeSigner, Recipient};
 use crate::ln::features::{InitFeatures, NodeFeatures};
 use crate::ln::msgs::{self, OnionMessage, OnionMessageHandler, SocketAddress};
 use crate::ln::onion_utils;
 use crate::routing::gossip::{NetworkGraph, NodeId, ReadOnlyNetworkGraph};
-use super::async_payments::AsyncPaymentsMessageHandler;
-#[cfg(async_payments)]
-use super::async_payments::AsyncPaymentsMessage;
-use super::packet::OnionMessageContents;
-use super::packet::ParsedOnionMessageContents;
-use super::offers::OffersMessageHandler;
-use super::packet::{BIG_PACKET_HOP_DATA_LEN, ForwardControlTlvs, Packet, Payload, ReceiveControlTlvs, SMALL_PACKET_HOP_DATA_LEN};
+use crate::sign::{EntropySource, NodeSigner, Recipient};
 use crate::util::async_poll::{MultiResultFuturePoller, ResultFuture};
 use crate::util::logger::{Logger, WithContext};
 use crate::util::ser::Writeable;
 use crate::util::wakers::{Future, Notifier};
 
+use crate::io;
+use crate::prelude::*;
+use crate::sync::Mutex;
 use core::fmt;
 use core::ops::Deref;
 use core::sync::atomic::{AtomicBool, Ordering};
-use crate::io;
-use crate::sync::Mutex;
-use crate::prelude::*;
 
 #[cfg(not(c_bindings))]
 use {
-	crate::sign::KeysManager,
 	crate::ln::channelmanager::{SimpleArcChannelManager, SimpleRefChannelManager},
 	crate::ln::peer_handler::IgnoringMessageHandler,
+	crate::sign::KeysManager,
 	crate::sync::Arc,
 };
 
@@ -91,18 +97,30 @@ pub trait AOnionMessenger {
 	/// A type that may be dereferenced to [`Self::CustomOnionMessageHandler`]
 	type CMH: Deref<Target = Self::CustomOnionMessageHandler>;
 	/// Returns a reference to the actual [`OnionMessenger`] object.
-	fn get_om(&self) -> &OnionMessenger<Self::ES, Self::NS, Self::L, Self::NL, Self::MR, Self::OMH, Self::APH, Self::CMH>;
+	fn get_om(
+		&self,
+	) -> &OnionMessenger<
+		Self::ES,
+		Self::NS,
+		Self::L,
+		Self::NL,
+		Self::MR,
+		Self::OMH,
+		Self::APH,
+		Self::CMH,
+	>;
 }
 
-impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref> AOnionMessenger
-for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH> where
+impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref>
+	AOnionMessenger for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
+where
 	ES::Target: EntropySource,
 	NS::Target: NodeSigner,
 	L::Target: Logger,
 	NL::Target: NodeIdLookUp,
 	MR::Target: MessageRouter,
 	OMH::Target: OffersMessageHandler,
-	APH:: Target: AsyncPaymentsMessageHandler,
+	APH::Target: AsyncPaymentsMessageHandler,
 	CMH::Target: CustomOnionMessageHandler,
 {
 	type EntropySource = ES::Target;
@@ -121,7 +139,9 @@ for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH> where
 	type APH = APH;
 	type CustomOnionMessageHandler = CMH::Target;
 	type CMH = CMH;
-	fn get_om(&self) -> &OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH> { self }
+	fn get_om(&self) -> &OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH> {
+		self
+	}
 }
 
 /// A sender, receiver and forwarder of [`OnionMessage`]s.
@@ -241,7 +261,14 @@ for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH> where
 /// [`InvoiceRequest`]: crate::offers::invoice_request::InvoiceRequest
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 pub struct OnionMessenger<
-	ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref
+	ES: Deref,
+	NS: Deref,
+	L: Deref,
+	NL: Deref,
+	MR: Deref,
+	OMH: Deref,
+	APH: Deref,
+	CMH: Deref,
 > where
 	ES::Target: EntropySource,
 	NS::Target: NodeSigner,
@@ -341,7 +368,6 @@ impl OnionMessageRecipient {
 	}
 }
 
-
 /// The `Responder` struct creates an appropriate [`ResponseInstruction`] for responding to a
 /// message.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -357,9 +383,7 @@ impl_writeable_tlv_based!(Responder, {
 impl Responder {
 	/// Creates a new [`Responder`] instance with the provided reply path.
 	pub(super) fn new(reply_path: BlindedMessagePath) -> Self {
-		Responder {
-			reply_path,
-		}
+		Responder { reply_path }
 	}
 
 	/// Creates a [`ResponseInstruction`] for responding without including a reply path.
@@ -436,15 +460,14 @@ pub enum MessageSendInstructions {
 pub trait MessageRouter {
 	/// Returns a route for sending an [`OnionMessage`] to the given [`Destination`].
 	fn find_path(
-		&self, sender: PublicKey, peers: Vec<PublicKey>, destination: Destination
+		&self, sender: PublicKey, peers: Vec<PublicKey>, destination: Destination,
 	) -> Result<OnionMessagePath, ()>;
 
 	/// Creates [`BlindedMessagePath`]s to the `recipient` node. The nodes in `peers` are assumed to
 	/// be direct peers with the `recipient`.
-	fn create_blinded_paths<
-		T: secp256k1::Signing + secp256k1::Verification
-	>(
-		&self, recipient: PublicKey, context: MessageContext, peers: Vec<PublicKey>, secp_ctx: &Secp256k1<T>,
+	fn create_blinded_paths<T: secp256k1::Signing + secp256k1::Verification>(
+		&self, recipient: PublicKey, context: MessageContext, peers: Vec<PublicKey>,
+		secp_ctx: &Secp256k1<T>,
 	) -> Result<Vec<BlindedMessagePath>, ()>;
 
 	/// Creates compact [`BlindedMessagePath`]s to the `recipient` node. The nodes in `peers` are
@@ -460,11 +483,9 @@ pub trait MessageRouter {
 	///
 	/// The provided implementation simply delegates to [`MessageRouter::create_blinded_paths`],
 	/// ignoring the short channel ids.
-	fn create_compact_blinded_paths<
-		T: secp256k1::Signing + secp256k1::Verification
-	>(
-		&self, recipient: PublicKey, context: MessageContext,
-		peers: Vec<MessageForwardNode>, secp_ctx: &Secp256k1<T>,
+	fn create_compact_blinded_paths<T: secp256k1::Signing + secp256k1::Verification>(
+		&self, recipient: PublicKey, context: MessageContext, peers: Vec<MessageForwardNode>,
+		secp_ctx: &Secp256k1<T>,
 	) -> Result<Vec<BlindedMessagePath>, ()> {
 		let peers = peers
 			.into_iter()
@@ -482,7 +503,7 @@ pub trait MessageRouter {
 /// it will create a one-hop path using the recipient as the introduction node if it is a announced
 /// node. Otherwise, there is no way to find a path to the introduction node in order to send a
 /// message, and thus an `Err` is returned.
-pub struct DefaultMessageRouter<G: Deref<Target=NetworkGraph<L>>, L: Deref, ES: Deref>
+pub struct DefaultMessageRouter<G: Deref<Target = NetworkGraph<L>>, L: Deref, ES: Deref>
 where
 	L::Target: Logger,
 	ES::Target: EntropySource,
@@ -491,7 +512,7 @@ where
 	entropy_source: ES,
 }
 
-impl<G: Deref<Target=NetworkGraph<L>>, L: Deref, ES: Deref> DefaultMessageRouter<G, L, ES>
+impl<G: Deref<Target = NetworkGraph<L>>, L: Deref, ES: Deref> DefaultMessageRouter<G, L, ES>
 where
 	L::Target: Logger,
 	ES::Target: EntropySource,
@@ -503,7 +524,7 @@ where
 
 	fn create_blinded_paths_from_iter<
 		I: ExactSizeIterator<Item = MessageForwardNode>,
-		T: secp256k1::Signing + secp256k1::Verification
+		T: secp256k1::Signing + secp256k1::Verification,
 	>(
 		network_graph: &G, recipient: PublicKey, context: MessageContext, peers: I,
 		entropy_source: &ES, secp_ctx: &Secp256k1<T>, compact_paths: bool,
@@ -522,18 +543,16 @@ where
 		let has_one_peer = peers.len() == 1;
 		let mut peer_info = peers
 			// Limit to peers with announced channels unless the recipient is unannounced.
-			.filter_map(|peer|
+			.filter_map(|peer| {
 				network_graph
 					.node(&NodeId::from_pubkey(&peer.node_id))
-					.filter(|info|
+					.filter(|info| {
 						!is_recipient_announced || info.channels.len() >= MIN_PEER_CHANNELS
-					)
+					})
 					.map(|info| (peer, info.is_tor_only(), info.channels.len()))
 					// Allow messages directly with the only peer when unannounced.
-					.or_else(|| (!is_recipient_announced && has_one_peer)
-						.then(|| (peer, false, 0))
-					)
-			)
+					.or_else(|| (!is_recipient_announced && has_one_peer).then(|| (peer, false, 0)))
+			})
 			// Exclude Tor-only nodes when the recipient is announced.
 			.filter(|(_, is_tor_only, _)| !(*is_tor_only && is_recipient_announced))
 			.collect::<Vec<_>>();
@@ -543,9 +562,16 @@ where
 			a_tor_only.cmp(b_tor_only).then(a_channels.cmp(b_channels).reverse())
 		});
 
-		let paths = peer_info.into_iter()
+		let paths = peer_info
+			.into_iter()
 			.map(|(peer, _, _)| {
-				BlindedMessagePath::new(&[peer], recipient, context.clone(), &**entropy_source, secp_ctx)
+				BlindedMessagePath::new(
+					&[peer],
+					recipient,
+					context.clone(),
+					&**entropy_source,
+					secp_ctx,
+				)
 			})
 			.take(MAX_PATHS)
 			.collect::<Result<Vec<_>, _>>();
@@ -572,7 +598,7 @@ where
 	}
 
 	pub(crate) fn find_path(
-		network_graph: &G, sender: PublicKey, peers: Vec<PublicKey>, mut destination: Destination
+		network_graph: &G, sender: PublicKey, peers: Vec<PublicKey>, mut destination: Destination,
 	) -> Result<OnionMessagePath, ()> {
 		let network_graph = network_graph.deref().read_only();
 		destination.resolve(&network_graph);
@@ -584,19 +610,27 @@ where
 
 		if peers.contains(&first_node) || sender == first_node {
 			Ok(OnionMessagePath {
-				intermediate_nodes: vec![], destination, first_node_addresses: None
+				intermediate_nodes: vec![],
+				destination,
+				first_node_addresses: None,
 			})
 		} else {
 			let node_details = network_graph
 				.node(&NodeId::from_pubkey(&first_node))
 				.and_then(|node_info| node_info.announcement_info.as_ref())
-				.map(|announcement_info| (announcement_info.features(), announcement_info.addresses()));
+				.map(|announcement_info| {
+					(announcement_info.features(), announcement_info.addresses())
+				});
 
 			match node_details {
-				Some((features, addresses)) if features.supports_onion_messages() && addresses.len() > 0 => {
+				Some((features, addresses))
+					if features.supports_onion_messages() && addresses.len() > 0 =>
+				{
 					let first_node_addresses = Some(addresses.to_vec());
 					Ok(OnionMessagePath {
-						intermediate_nodes: vec![], destination, first_node_addresses
+						intermediate_nodes: vec![],
+						destination,
+						first_node_addresses,
 					})
 				},
 				_ => Err(()),
@@ -604,55 +638,78 @@ where
 		}
 	}
 
-	pub(crate) fn create_blinded_paths<
-		T: secp256k1::Signing + secp256k1::Verification
-	>(
-		network_graph: &G, recipient: PublicKey, context: MessageContext,
-		peers: Vec<PublicKey>, entropy_source: &ES, secp_ctx: &Secp256k1<T>,
+	pub(crate) fn create_blinded_paths<T: secp256k1::Signing + secp256k1::Verification>(
+		network_graph: &G, recipient: PublicKey, context: MessageContext, peers: Vec<PublicKey>,
+		entropy_source: &ES, secp_ctx: &Secp256k1<T>,
 	) -> Result<Vec<BlindedMessagePath>, ()> {
-		let peers = peers
-			.into_iter()
-			.map(|node_id| MessageForwardNode { node_id, short_channel_id: None });
-		Self::create_blinded_paths_from_iter(network_graph, recipient, context, peers.into_iter(), entropy_source, secp_ctx, false)
+		let peers =
+			peers.into_iter().map(|node_id| MessageForwardNode { node_id, short_channel_id: None });
+		Self::create_blinded_paths_from_iter(
+			network_graph,
+			recipient,
+			context,
+			peers.into_iter(),
+			entropy_source,
+			secp_ctx,
+			false,
+		)
 	}
 
-	pub(crate) fn create_compact_blinded_paths<
-		T: secp256k1::Signing + secp256k1::Verification
-	>(
+	pub(crate) fn create_compact_blinded_paths<T: secp256k1::Signing + secp256k1::Verification>(
 		network_graph: &G, recipient: PublicKey, context: MessageContext,
 		peers: Vec<MessageForwardNode>, entropy_source: &ES, secp_ctx: &Secp256k1<T>,
 	) -> Result<Vec<BlindedMessagePath>, ()> {
-		Self::create_blinded_paths_from_iter(network_graph, recipient, context, peers.into_iter(), entropy_source, secp_ctx, true)
+		Self::create_blinded_paths_from_iter(
+			network_graph,
+			recipient,
+			context,
+			peers.into_iter(),
+			entropy_source,
+			secp_ctx,
+			true,
+		)
 	}
 }
 
-impl<G: Deref<Target=NetworkGraph<L>>, L: Deref, ES: Deref> MessageRouter for DefaultMessageRouter<G, L, ES>
+impl<G: Deref<Target = NetworkGraph<L>>, L: Deref, ES: Deref> MessageRouter
+	for DefaultMessageRouter<G, L, ES>
 where
 	L::Target: Logger,
 	ES::Target: EntropySource,
 {
 	fn find_path(
-		&self, sender: PublicKey, peers: Vec<PublicKey>, destination: Destination
+		&self, sender: PublicKey, peers: Vec<PublicKey>, destination: Destination,
 	) -> Result<OnionMessagePath, ()> {
 		Self::find_path(&self.network_graph, sender, peers, destination)
 	}
 
-	fn create_blinded_paths<
-		T: secp256k1::Signing + secp256k1::Verification
-	>(
-		&self, recipient: PublicKey, context: MessageContext, peers: Vec<PublicKey>, secp_ctx: &Secp256k1<T>,
+	fn create_blinded_paths<T: secp256k1::Signing + secp256k1::Verification>(
+		&self, recipient: PublicKey, context: MessageContext, peers: Vec<PublicKey>,
+		secp_ctx: &Secp256k1<T>,
 	) -> Result<Vec<BlindedMessagePath>, ()> {
-		Self::create_blinded_paths(&self.network_graph, recipient, context, peers, &self.entropy_source, secp_ctx)
+		Self::create_blinded_paths(
+			&self.network_graph,
+			recipient,
+			context,
+			peers,
+			&self.entropy_source,
+			secp_ctx,
+		)
 	}
 
-	fn create_compact_blinded_paths<
-		T: secp256k1::Signing + secp256k1::Verification
-	>(
-		&self, recipient: PublicKey, context: MessageContext, peers: Vec<MessageForwardNode>, secp_ctx: &Secp256k1<T>,
+	fn create_compact_blinded_paths<T: secp256k1::Signing + secp256k1::Verification>(
+		&self, recipient: PublicKey, context: MessageContext, peers: Vec<MessageForwardNode>,
+		secp_ctx: &Secp256k1<T>,
 	) -> Result<Vec<BlindedMessagePath>, ()> {
-		Self::create_compact_blinded_paths(&self.network_graph, recipient, context, peers, &self.entropy_source, secp_ctx)
+		Self::create_compact_blinded_paths(
+			&self.network_graph,
+			recipient,
+			context,
+			peers,
+			&self.entropy_source,
+			secp_ctx,
+		)
 	}
-
 }
 
 /// A path for sending an [`OnionMessage`].
@@ -674,10 +731,7 @@ pub struct OnionMessagePath {
 impl OnionMessagePath {
 	/// Returns the first node in the path.
 	pub fn first_node(&self) -> Option<PublicKey> {
-		self.intermediate_nodes
-			.first()
-			.copied()
-			.or_else(|| self.destination.first_node())
+		self.intermediate_nodes.first().copied().or_else(|| self.destination.first_node())
 	}
 }
 
@@ -717,11 +771,9 @@ impl Destination {
 	fn first_node(&self) -> Option<PublicKey> {
 		match self {
 			Destination::Node(node_id) => Some(*node_id),
-			Destination::BlindedPath(path) => {
-				match path.introduction_node() {
-					IntroductionNode::NodeId(pubkey) => Some(*pubkey),
-					IntroductionNode::DirectedShortChannelId(..) => None,
-				}
+			Destination::BlindedPath(path) => match path.introduction_node() {
+				IntroductionNode::NodeId(pubkey) => Some(*pubkey),
+				IntroductionNode::DirectedShortChannelId(..) => None,
 			},
 		}
 	}
@@ -799,18 +851,22 @@ pub trait CustomOnionMessageHandler {
 	///
 	/// The returned [`Self::CustomMessage`], if any, is enqueued to be sent by [`OnionMessenger`].
 	fn handle_custom_message(
-		&self, message: Self::CustomMessage, context: Option<Vec<u8>>, responder: Option<Responder>
+		&self, message: Self::CustomMessage, context: Option<Vec<u8>>, responder: Option<Responder>,
 	) -> Option<(Self::CustomMessage, ResponseInstruction)>;
 
 	/// Read a custom message of type `message_type` from `buffer`, returning `Ok(None)` if the
 	/// message type is unknown.
-	fn read_custom_message<R: io::Read>(&self, message_type: u64, buffer: &mut R) -> Result<Option<Self::CustomMessage>, msgs::DecodeError>;
+	fn read_custom_message<R: io::Read>(
+		&self, message_type: u64, buffer: &mut R,
+	) -> Result<Option<Self::CustomMessage>, msgs::DecodeError>;
 
 	/// Releases any [`Self::CustomMessage`]s that need to be sent.
 	///
 	/// Typically, this is used for messages initiating a message flow rather than in response to
 	/// another message. The latter should use the return value of [`Self::handle_custom_message`].
-	fn release_pending_custom_messages(&self) -> Vec<(Self::CustomMessage, MessageSendInstructions)>;
+	fn release_pending_custom_messages(
+		&self,
+	) -> Vec<(Self::CustomMessage, MessageSendInstructions)>;
 }
 
 /// A processed incoming onion message, containing either a Forward (another onion message)
@@ -820,9 +876,8 @@ pub enum PeeledOnion<T: OnionMessageContents> {
 	/// Forwarded onion, with the next node id and a new onion
 	Forward(NextMessageHop, OnionMessage),
 	/// Received onion message, with decrypted contents, context, and reply path
-	Receive(ParsedOnionMessageContents<T>, Option<MessageContext>, Option<BlindedMessagePath>)
+	Receive(ParsedOnionMessageContents<T>, Option<MessageContext>, Option<BlindedMessagePath>),
 }
-
 
 /// Creates an [`OnionMessage`] with the given `contents` for sending to the destination of
 /// `path`, first calling [`Destination::resolve`] on `path.destination` with the given
@@ -831,7 +886,10 @@ pub enum PeeledOnion<T: OnionMessageContents> {
 /// Returns the node id of the peer to send the message to, the message itself, and any addresses
 /// needed to connect to the first node.
 pub fn create_onion_message_resolving_destination<
-	ES: Deref, NS: Deref, NL: Deref, T: OnionMessageContents
+	ES: Deref,
+	NS: Deref,
+	NL: Deref,
+	T: OnionMessageContents,
 >(
 	entropy_source: &ES, node_signer: &NS, node_id_lookup: &NL,
 	network_graph: &ReadOnlyNetworkGraph, secp_ctx: &Secp256k1<secp256k1::All>,
@@ -844,7 +902,13 @@ where
 {
 	path.destination.resolve(network_graph);
 	create_onion_message(
-		entropy_source, node_signer, node_id_lookup, secp_ctx, path, contents, reply_path,
+		entropy_source,
+		node_signer,
+		node_id_lookup,
+		secp_ctx,
+		path,
+		contents,
+		reply_path,
 	)
 }
 
@@ -876,13 +940,16 @@ where
 		}
 	}
 
-	if contents.tlv_type() < 64 { return Err(SendError::InvalidMessage) }
+	if contents.tlv_type() < 64 {
+		return Err(SendError::InvalidMessage);
+	}
 
 	// If we are sending straight to a blinded path and we are the introduction node, we need to
 	// advance the blinded path by 1 hop so the second hop is the new introduction node.
 	if intermediate_nodes.len() == 0 {
 		if let Destination::BlindedPath(ref mut blinded_path) = destination {
-			let our_node_id = node_signer.get_node_id(Recipient::Node)
+			let our_node_id = node_signer
+				.get_node_id(Recipient::Node)
 				.map_err(|()| SendError::GetNodeIdFailed)?;
 			let introduction_node_id = match blinded_path.introduction_node() {
 				IntroductionNode::NodeId(pubkey) => *pubkey,
@@ -894,7 +961,8 @@ where
 				},
 			};
 			if introduction_node_id == our_node_id {
-				blinded_path.advance_path_by_one(node_signer, node_id_lookup, &secp_ctx)
+				blinded_path
+					.advance_path_by_one(node_signer, node_id_lookup, &secp_ctx)
 					.map_err(|()| SendError::BlindedPathAdvanceFailed)?;
 			}
 		}
@@ -907,23 +975,27 @@ where
 	} else {
 		match &destination {
 			Destination::Node(pk) => (*pk, PublicKey::from_secret_key(&secp_ctx, &blinding_secret)),
-			Destination::BlindedPath(path) => {
-				match path.introduction_node() {
-					IntroductionNode::NodeId(pubkey) => (*pubkey, path.blinding_point()),
-					IntroductionNode::DirectedShortChannelId(..) => {
-						return Err(SendError::UnresolvedIntroductionNode);
-					},
-				}
-			}
+			Destination::BlindedPath(path) => match path.introduction_node() {
+				IntroductionNode::NodeId(pubkey) => (*pubkey, path.blinding_point()),
+				IntroductionNode::DirectedShortChannelId(..) => {
+					return Err(SendError::UnresolvedIntroductionNode);
+				},
+			},
 		}
 	};
 	let (packet_payloads, packet_keys) = packet_payloads_and_keys(
-		&secp_ctx, intermediate_nodes, destination, contents, reply_path, &blinding_secret
+		&secp_ctx,
+		intermediate_nodes,
+		destination,
+		contents,
+		reply_path,
+		&blinding_secret,
 	)?;
 
 	let prng_seed = entropy_source.get_secure_random_bytes();
-	let onion_routing_packet = construct_onion_message_packet(
-		packet_payloads, packet_keys, prng_seed).map_err(|()| SendError::TooBigPacket)?;
+	let onion_routing_packet =
+		construct_onion_message_packet(packet_payloads, packet_keys, prng_seed)
+			.map_err(|()| SendError::TooBigPacket)?;
 
 	let message = OnionMessage { blinding_point, onion_routing_packet };
 	Ok((first_node_id, message, first_node_addresses))
@@ -944,10 +1016,10 @@ where
 {
 	let control_tlvs_ss = match node_signer.ecdh(Recipient::Node, &msg.blinding_point, None) {
 		Ok(ss) => ss,
-		Err(e) =>  {
+		Err(e) => {
 			log_error!(logger, "Failed to retrieve node secret: {:?}", e);
 			return Err(());
-		}
+		},
 	};
 	let onion_decode_ss = {
 		let blinding_factor = {
@@ -955,53 +1027,73 @@ where
 			hmac.input(control_tlvs_ss.as_ref());
 			Hmac::from_engine(hmac).to_byte_array()
 		};
-		match node_signer.ecdh(Recipient::Node, &msg.onion_routing_packet.public_key,
-			Some(&Scalar::from_be_bytes(blinding_factor).unwrap()))
-		{
+		match node_signer.ecdh(
+			Recipient::Node,
+			&msg.onion_routing_packet.public_key,
+			Some(&Scalar::from_be_bytes(blinding_factor).unwrap()),
+		) {
 			Ok(ss) => ss.secret_bytes(),
 			Err(()) => {
 				log_trace!(logger, "Failed to compute onion packet shared secret");
 				return Err(());
-			}
+			},
 		}
 	};
 	match onion_utils::decode_next_untagged_hop(
-		onion_decode_ss, &msg.onion_routing_packet.hop_data[..], msg.onion_routing_packet.hmac,
-		(control_tlvs_ss, custom_handler.deref(), logger.deref())
+		onion_decode_ss,
+		&msg.onion_routing_packet.hop_data[..],
+		msg.onion_routing_packet.hmac,
+		(control_tlvs_ss, custom_handler.deref(), logger.deref()),
 	) {
-		Ok((Payload::Receive::<ParsedOnionMessageContents<<<CMH as Deref>::Target as CustomOnionMessageHandler>::CustomMessage>> {
-			message, control_tlvs: ReceiveControlTlvs::Unblinded(ReceiveTlvs { context }), reply_path,
-		}, None)) => {
-			match (&message, &context) {
-				(_, None) => {
-					Ok(PeeledOnion::Receive(message, None, reply_path))
-				}
-				(ParsedOnionMessageContents::Offers(_), Some(MessageContext::Offers(_))) => {
-					Ok(PeeledOnion::Receive(message, context, reply_path))
-				}
-				(ParsedOnionMessageContents::Custom(_), Some(MessageContext::Custom(_))) => {
-					Ok(PeeledOnion::Receive(message, context, reply_path))
-				}
-				_ => {
-					log_trace!(logger, "Received message was sent on a blinded path with the wrong context.");
-					Err(())
-				}
-			}
+		Ok((
+			Payload::Receive::<
+				ParsedOnionMessageContents<
+					<<CMH as Deref>::Target as CustomOnionMessageHandler>::CustomMessage,
+				>,
+			> {
+				message,
+				control_tlvs: ReceiveControlTlvs::Unblinded(ReceiveTlvs { context }),
+				reply_path,
+			},
+			None,
+		)) => match (&message, &context) {
+			(_, None) => Ok(PeeledOnion::Receive(message, None, reply_path)),
+			(ParsedOnionMessageContents::Offers(_), Some(MessageContext::Offers(_))) => {
+				Ok(PeeledOnion::Receive(message, context, reply_path))
+			},
+			(ParsedOnionMessageContents::Custom(_), Some(MessageContext::Custom(_))) => {
+				Ok(PeeledOnion::Receive(message, context, reply_path))
+			},
+			_ => {
+				log_trace!(
+					logger,
+					"Received message was sent on a blinded path with the wrong context."
+				);
+				Err(())
+			},
 		},
-		Ok((Payload::Forward(ForwardControlTlvs::Unblinded(ForwardTlvs {
-			next_hop, next_blinding_override
-		})), Some((next_hop_hmac, new_packet_bytes)))) => {
+		Ok((
+			Payload::Forward(ForwardControlTlvs::Unblinded(ForwardTlvs {
+				next_hop,
+				next_blinding_override,
+			})),
+			Some((next_hop_hmac, new_packet_bytes)),
+		)) => {
 			// TODO: we need to check whether `next_hop` is our node, in which case this is a dummy
 			// blinded hop and this onion message is destined for us. In this situation, we should keep
 			// unwrapping the onion layers to get to the final payload. Since we don't have the option
 			// of creating blinded paths with dummy hops currently, we should be ok to not handle this
 			// for now.
-			let new_pubkey = match onion_utils::next_hop_pubkey(&secp_ctx, msg.onion_routing_packet.public_key, &onion_decode_ss) {
+			let new_pubkey = match onion_utils::next_hop_pubkey(
+				&secp_ctx,
+				msg.onion_routing_packet.public_key,
+				&onion_decode_ss,
+			) {
 				Ok(pk) => pk,
 				Err(e) => {
 					log_trace!(logger, "Failed to compute next hop packet pubkey: {}", e);
-					return Err(())
-				}
+					return Err(());
+				},
 			};
 			let outgoing_packet = Packet {
 				version: 0,
@@ -1014,15 +1106,17 @@ where
 					Some(blinding_point) => blinding_point,
 					None => {
 						match onion_utils::next_hop_pubkey(
-							&secp_ctx, msg.blinding_point, control_tlvs_ss.as_ref()
+							&secp_ctx,
+							msg.blinding_point,
+							control_tlvs_ss.as_ref(),
 						) {
 							Ok(bp) => bp,
 							Err(e) => {
 								log_trace!(logger, "Failed to compute next blinding point: {}", e);
-								return Err(())
-							}
+								return Err(());
+							},
 						}
-					}
+					},
 				},
 				onion_routing_packet: outgoing_packet,
 			};
@@ -1040,35 +1134,37 @@ where
 	}
 }
 
-macro_rules! drop_handled_events_and_abort { ($self: expr, $res_iter: expr, $event_queue: expr) => {
-	// We want to make sure to cleanly abort upon event handling failure. To this end, we drop all
-	// successfully handled events from the given queue, reset the events processing flag, and
-	// return, to have the events eventually replayed upon next invocation.
-	{
-		let mut queue_lock = $event_queue.lock().unwrap();
+macro_rules! drop_handled_events_and_abort {
+	($self: expr, $res_iter: expr, $event_queue: expr) => {
+		// We want to make sure to cleanly abort upon event handling failure. To this end, we drop all
+		// successfully handled events from the given queue, reset the events processing flag, and
+		// return, to have the events eventually replayed upon next invocation.
+		{
+			let mut queue_lock = $event_queue.lock().unwrap();
 
-		// Keep all events which previously error'd *or* any that have been added since we dropped
-		// the Mutex before.
-		let mut any_error = false;
-		queue_lock.retain(|_| {
-			$res_iter.next().map_or(true, |r| {
-				let is_err = r.is_err();
-				any_error |= is_err;
-				is_err
-			})
-		});
+			// Keep all events which previously error'd *or* any that have been added since we dropped
+			// the Mutex before.
+			let mut any_error = false;
+			queue_lock.retain(|_| {
+				$res_iter.next().map_or(true, |r| {
+					let is_err = r.is_err();
+					any_error |= is_err;
+					is_err
+				})
+			});
 
-		if any_error {
-			// We failed handling some events. Return to have them eventually replayed.
-			$self.pending_events_processor.store(false, Ordering::Release);
-			$self.event_notifier.notify();
-			return;
+			if any_error {
+				// We failed handling some events. Return to have them eventually replayed.
+				$self.pending_events_processor.store(false, Ordering::Release);
+				$self.event_notifier.notify();
+				return;
+			}
 		}
-	}
-}}
+	};
+}
 
 impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref>
-OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
+	OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
 where
 	ES::Target: EntropySource,
 	NS::Target: NodeSigner,
@@ -1083,11 +1179,18 @@ where
 	/// their respective handlers.
 	pub fn new(
 		entropy_source: ES, node_signer: NS, logger: L, node_id_lookup: NL, message_router: MR,
-		offers_handler: OMH, async_payments_handler: APH, custom_handler: CMH
+		offers_handler: OMH, async_payments_handler: APH, custom_handler: CMH,
 	) -> Self {
 		Self::new_inner(
-			entropy_source, node_signer, logger, node_id_lookup, message_router,
-			offers_handler, async_payments_handler, custom_handler, false
+			entropy_source,
+			node_signer,
+			logger,
+			node_id_lookup,
+			message_router,
+			offers_handler,
+			async_payments_handler,
+			custom_handler,
+			false,
 		)
 	}
 
@@ -1113,19 +1216,26 @@ where
 	/// onion messages are persisted and only persist onion messages for relevant
 	/// peers.
 	pub fn new_with_offline_peer_interception(
-		entropy_source: ES, node_signer: NS, logger: L, node_id_lookup: NL,
-		message_router: MR, offers_handler: OMH, async_payments_handler: APH, custom_handler: CMH
+		entropy_source: ES, node_signer: NS, logger: L, node_id_lookup: NL, message_router: MR,
+		offers_handler: OMH, async_payments_handler: APH, custom_handler: CMH,
 	) -> Self {
 		Self::new_inner(
-			entropy_source, node_signer, logger, node_id_lookup, message_router,
-			offers_handler, async_payments_handler, custom_handler, true
+			entropy_source,
+			node_signer,
+			logger,
+			node_id_lookup,
+			message_router,
+			offers_handler,
+			async_payments_handler,
+			custom_handler,
+			true,
 		)
 	}
 
 	fn new_inner(
-		entropy_source: ES, node_signer: NS, logger: L, node_id_lookup: NL,
-		message_router: MR, offers_handler: OMH, async_payments_handler: APH, custom_handler: CMH,
-		intercept_messages_for_offline_peers: bool
+		entropy_source: ES, node_signer: NS, logger: L, node_id_lookup: NL, message_router: MR,
+		offers_handler: OMH, async_payments_handler: APH, custom_handler: CMH,
+		intercept_messages_for_offline_peers: bool,
 	) -> Self {
 		let mut secp_ctx = Secp256k1::new();
 		secp_ctx.seeded_randomize(&entropy_source.get_secure_random_bytes());
@@ -1164,26 +1274,28 @@ where
 		&self, contents: T, instructions: MessageSendInstructions, log_suffix: fmt::Arguments,
 	) -> Result<SendSuccess, SendError> {
 		let (destination, reply_path) = match instructions {
-			MessageSendInstructions::WithSpecifiedReplyPath { destination, reply_path } =>
-				(destination, Some(reply_path)),
+			MessageSendInstructions::WithSpecifiedReplyPath { destination, reply_path } => {
+				(destination, Some(reply_path))
+			},
 			MessageSendInstructions::WithReplyPath { destination, context }
-				|MessageSendInstructions::ForReply { instructions: ResponseInstruction { destination, context: Some(context) } } =>
-			{
-				match self.create_blinded_path(context) {
-					Ok(reply_path) => (destination, Some(reply_path)),
-					Err(err) => {
-						log_trace!(
-							self.logger,
-							"Failed to create reply path {}: {:?}",
-							log_suffix, err
-						);
-						return Err(err);
-					}
-				}
+			| MessageSendInstructions::ForReply {
+				instructions: ResponseInstruction { destination, context: Some(context) },
+			} => match self.create_blinded_path(context) {
+				Ok(reply_path) => (destination, Some(reply_path)),
+				Err(err) => {
+					log_trace!(
+						self.logger,
+						"Failed to create reply path {}: {:?}",
+						log_suffix,
+						err
+					);
+					return Err(err);
+				},
 			},
 			MessageSendInstructions::WithoutReplyPath { destination }
-				|MessageSendInstructions::ForReply { instructions: ResponseInstruction { destination, context: None } } =>
-				(destination, None),
+			| MessageSendInstructions::ForReply {
+				instructions: ResponseInstruction { destination, context: None },
+			} => (destination, None),
 		};
 
 		let mut logger = WithContext::from(&self.logger, None, None, None);
@@ -1210,7 +1322,8 @@ where
 				log_trace!(
 					logger,
 					"Buffered onion message waiting on peer connection {}: {}",
-					log_suffix, node_id
+					log_suffix,
+					node_id
 				);
 			},
 		}
@@ -1219,11 +1332,15 @@ where
 	}
 
 	fn find_path(&self, destination: Destination) -> Result<OnionMessagePath, SendError> {
-		let sender = self.node_signer
+		let sender = self
+			.node_signer
 			.get_node_id(Recipient::Node)
 			.map_err(|_| SendError::GetNodeIdFailed)?;
 
-		let peers = self.message_recipients.lock().unwrap()
+		let peers = self
+			.message_recipients
+			.lock()
+			.unwrap()
 			.iter()
 			.filter(|(_, recipient)| matches!(recipient, OnionMessageRecipient::ConnectedPeer(_)))
 			.map(|(node_id, _)| *node_id)
@@ -1234,16 +1351,22 @@ where
 			.map_err(|_| SendError::PathNotFound)
 	}
 
-	fn create_blinded_path(&self, context: MessageContext) -> Result<BlindedMessagePath, SendError> {
-		let recipient = self.node_signer
+	fn create_blinded_path(
+		&self, context: MessageContext,
+	) -> Result<BlindedMessagePath, SendError> {
+		let recipient = self
+			.node_signer
 			.get_node_id(Recipient::Node)
 			.map_err(|_| SendError::GetNodeIdFailed)?;
 		let secp_ctx = &self.secp_ctx;
 
-		let peers = self.message_recipients.lock().unwrap()
+		let peers = self
+			.message_recipients
+			.lock()
+			.unwrap()
 			.iter()
 			.filter(|(_, peer)| matches!(peer, OnionMessageRecipient::ConnectedPeer(_)))
-			.map(|(node_id, _ )| *node_id)
+			.map(|(node_id, _)| *node_id)
 			.collect::<Vec<_>>();
 
 		self.message_router
@@ -1254,13 +1377,18 @@ where
 
 	fn enqueue_onion_message<T: OnionMessageContents>(
 		&self, path: OnionMessagePath, contents: T, reply_path: Option<BlindedMessagePath>,
-		log_suffix: fmt::Arguments
+		log_suffix: fmt::Arguments,
 	) -> Result<SendSuccess, SendError> {
 		log_trace!(self.logger, "Constructing onion message {}: {:?}", log_suffix, contents);
 
 		let (first_node_id, onion_message, addresses) = create_onion_message(
-			&self.entropy_source, &self.node_signer, &self.node_id_lookup, &self.secp_ctx, path,
-			contents, reply_path,
+			&self.entropy_source,
+			&self.node_signer,
+			&self.node_id_lookup,
+			&self.secp_ctx,
+			path,
+			contents,
+			reply_path,
 		)?;
 
 		let mut message_recipients = self.message_recipients.lock().unwrap();
@@ -1294,7 +1422,7 @@ where
 	/// and want to forward a previously intercepted onion message to a peer that
 	/// has just come online.
 	pub fn forward_onion_message(
-		&self, message: OnionMessage, peer_node_id: &PublicKey
+		&self, message: OnionMessage, peer_node_id: &PublicKey,
 	) -> Result<(), SendError> {
 		let mut message_recipients = self.message_recipients.lock().unwrap();
 		if outbound_buffer_full(&peer_node_id, &message_recipients) {
@@ -1306,22 +1434,26 @@ where
 				e.get_mut().enqueue_message(message);
 				Ok(())
 			},
-			_ => Err(SendError::InvalidFirstHop(*peer_node_id))
+			_ => Err(SendError::InvalidFirstHop(*peer_node_id)),
 		}
 	}
 
 	#[cfg(any(test, feature = "_test_utils"))]
 	pub fn send_onion_message_using_path<T: OnionMessageContents>(
-		&self, path: OnionMessagePath, contents: T, reply_path: Option<BlindedMessagePath>
+		&self, path: OnionMessagePath, contents: T, reply_path: Option<BlindedMessagePath>,
 	) -> Result<SendSuccess, SendError> {
 		self.enqueue_onion_message(path, contents, reply_path, format_args!(""))
 	}
 
 	pub(crate) fn peel_onion_message(
-		&self, msg: &OnionMessage
+		&self, msg: &OnionMessage,
 	) -> Result<PeeledOnion<<<CMH>::Target as CustomOnionMessageHandler>::CustomMessage>, ()> {
 		peel_onion_message(
-			msg, &self.secp_ctx, &*self.node_signer, &*self.logger, &*self.custom_handler
+			msg,
+			&self.secp_ctx,
+			&*self.node_signer,
+			&*self.logger,
+			&*self.custom_handler,
 		)
 	}
 
@@ -1338,11 +1470,9 @@ where
 	) -> Result<SendSuccess, SendError> {
 		let message_type = response.msg_type();
 		self.send_onion_message_internal(
-			response, instructions.into_instructions(),
-			format_args!(
-				"when responding with {} to an onion message",
-				message_type,
-			)
+			response,
+			instructions.into_instructions(),
+			format_args!("when responding with {} to an onion message", message_type,),
 		)
 	}
 
@@ -1362,11 +1492,11 @@ where
 		const MAX_EVENTS_BUFFER_SIZE: usize = (1 << 10) * 256;
 		let mut pending_intercepted_msgs_events =
 			self.pending_intercepted_msgs_events.lock().unwrap();
-		let total_buffered_bytes: usize = pending_intercepted_msgs_events.iter()
-			.map(|ev| ev.serialized_length()).sum();
+		let total_buffered_bytes: usize =
+			pending_intercepted_msgs_events.iter().map(|ev| ev.serialized_length()).sum();
 		if total_buffered_bytes >= MAX_EVENTS_BUFFER_SIZE {
 			log_trace!(self.logger, "Dropping event {:?}: buffer full", event);
-			return
+			return;
 		}
 		pending_intercepted_msgs_events.push(event);
 		self.event_notifier.notify();
@@ -1390,10 +1520,17 @@ where
 	/// have an ordering requirement.
 	///
 	/// See the trait-level documentation of [`EventsProvider`] for requirements.
-	pub async fn process_pending_events_async<Future: core::future::Future<Output = Result<(), ReplayEvent>> + core::marker::Unpin, H: Fn(Event) -> Future>(
-		&self, handler: H
+	pub async fn process_pending_events_async<
+		Future: core::future::Future<Output = Result<(), ReplayEvent>> + core::marker::Unpin,
+		H: Fn(Event) -> Future,
+	>(
+		&self, handler: H,
 	) {
-		if self.pending_events_processor.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+		if self
+			.pending_events_processor
+			.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+			.is_err()
+		{
 			return;
 		}
 
@@ -1403,7 +1540,10 @@ where
 			for (node_id, recipient) in self.message_recipients.lock().unwrap().iter_mut() {
 				if let OnionMessageRecipient::PendingConnection(_, addresses, _) = recipient {
 					if let Some(addresses) = addresses.take() {
-						let future = ResultFuture::Pending(handler(Event::ConnectionNeeded { node_id: *node_id, addresses }));
+						let future = ResultFuture::Pending(handler(Event::ConnectionNeeded {
+							node_id: *node_id,
+							addresses,
+						}));
 						futures.push(future);
 					}
 				}
@@ -1414,7 +1554,10 @@ where
 			let intercepted_msgs_offset = futures.len();
 
 			for ev in intercepted_msgs {
-				if let Event::OnionMessageIntercepted { .. } = ev {} else { debug_assert!(false); }
+				if let Event::OnionMessageIntercepted { .. } = ev {
+				} else {
+					debug_assert!(false);
+				}
 				let future = ResultFuture::Pending(handler(ev));
 				futures.push(future);
 			}
@@ -1430,7 +1573,10 @@ where
 			if num_peer_connecteds <= 1 {
 				for event in peer_connecteds {
 					if handler(event).await.is_ok() {
-						self.pending_peer_connected_events.lock().unwrap().drain(..num_peer_connecteds);
+						self.pending_peer_connected_events
+							.lock()
+							.unwrap()
+							.drain(..num_peer_connecteds);
 					} else {
 						// We failed handling the event. Return to have it eventually replayed.
 						self.pending_events_processor.store(false, Ordering::Release);
@@ -1452,7 +1598,9 @@ where
 	}
 }
 
-fn outbound_buffer_full(peer_node_id: &PublicKey, buffer: &HashMap<PublicKey, OnionMessageRecipient>) -> bool {
+fn outbound_buffer_full(
+	peer_node_id: &PublicKey, buffer: &HashMap<PublicKey, OnionMessageRecipient>,
+) -> bool {
 	const MAX_TOTAL_BUFFER_SIZE: usize = (1 << 20) * 128;
 	const MAX_PER_PEER_BUFFER_SIZE: usize = (1 << 10) * 256;
 	let mut total_buffered_bytes = 0;
@@ -1465,18 +1613,18 @@ fn outbound_buffer_full(peer_node_id: &PublicKey, buffer: &HashMap<PublicKey, On
 			}
 			total_buffered_bytes += om_len;
 
-			if total_buffered_bytes >= MAX_TOTAL_BUFFER_SIZE ||
-				peer_buffered_bytes >= MAX_PER_PEER_BUFFER_SIZE
+			if total_buffered_bytes >= MAX_TOTAL_BUFFER_SIZE
+				|| peer_buffered_bytes >= MAX_PER_PEER_BUFFER_SIZE
 			{
-				return true
+				return true;
 			}
 		}
 	}
 	false
 }
 
-impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref> EventsProvider
-for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
+impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref>
+	EventsProvider for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
 where
 	ES::Target: EntropySource,
 	NS::Target: NodeSigner,
@@ -1487,31 +1635,47 @@ where
 	APH::Target: AsyncPaymentsMessageHandler,
 	CMH::Target: CustomOnionMessageHandler,
 {
-	fn process_pending_events<H: Deref>(&self, handler: H) where H::Target: EventHandler {
-		if self.pending_events_processor.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+	fn process_pending_events<H: Deref>(&self, handler: H)
+	where
+		H::Target: EventHandler,
+	{
+		if self
+			.pending_events_processor
+			.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+			.is_err()
+		{
 			return;
 		}
 
 		for (node_id, recipient) in self.message_recipients.lock().unwrap().iter_mut() {
 			if let OnionMessageRecipient::PendingConnection(_, addresses, _) = recipient {
 				if let Some(addresses) = addresses.take() {
-					let _ = handler.handle_event(Event::ConnectionNeeded { node_id: *node_id, addresses });
+					let _ = handler
+						.handle_event(Event::ConnectionNeeded { node_id: *node_id, addresses });
 				}
 			}
 		}
 		let intercepted_msgs;
 		let peer_connecteds;
 		{
-			let pending_intercepted_msgs_events = self.pending_intercepted_msgs_events.lock().unwrap();
+			let pending_intercepted_msgs_events =
+				self.pending_intercepted_msgs_events.lock().unwrap();
 			intercepted_msgs = pending_intercepted_msgs_events.clone();
 			let pending_peer_connected_events = self.pending_peer_connected_events.lock().unwrap();
 			peer_connecteds = pending_peer_connected_events.clone();
-			#[cfg(debug_assertions)] {
+			#[cfg(debug_assertions)]
+			{
 				for ev in pending_intercepted_msgs_events.iter() {
-					if let Event::OnionMessageIntercepted { .. } = ev {} else { panic!(); }
+					if let Event::OnionMessageIntercepted { .. } = ev {
+					} else {
+						panic!();
+					}
 				}
 				for ev in pending_peer_connected_events.iter() {
-					if let Event::OnionMessagePeerConnected { .. } = ev {} else { panic!(); }
+					if let Event::OnionMessagePeerConnected { .. } = ev {
+					} else {
+						panic!();
+					}
 				}
 			}
 		}
@@ -1521,15 +1685,16 @@ where
 		for ev in intercepted_msgs {
 			match handler.handle_event(ev) {
 				Ok(()) => num_handled_intercepted_events += 1,
-				Err(ReplayEvent ()) => {
+				Err(ReplayEvent()) => {
 					handling_intercepted_msgs_failed = true;
 					break;
-				}
+				},
 			}
 		}
 
 		{
-			let mut pending_intercepted_msgs_events = self.pending_intercepted_msgs_events.lock().unwrap();
+			let mut pending_intercepted_msgs_events =
+				self.pending_intercepted_msgs_events.lock().unwrap();
 			pending_intercepted_msgs_events.drain(..num_handled_intercepted_events);
 		}
 
@@ -1543,15 +1708,16 @@ where
 		for ev in peer_connecteds {
 			match handler.handle_event(ev) {
 				Ok(()) => num_handled_peer_connecteds += 1,
-				Err(ReplayEvent ()) => {
+				Err(ReplayEvent()) => {
 					self.event_notifier.notify();
 					break;
-				}
+				},
 			}
 		}
 
 		{
-			let mut pending_peer_connected_events = self.pending_peer_connected_events.lock().unwrap();
+			let mut pending_peer_connected_events =
+				self.pending_peer_connected_events.lock().unwrap();
 			pending_peer_connected_events.drain(..num_handled_peer_connecteds);
 			pending_peer_connected_events.shrink_to(10); // Limit total heap usage
 		}
@@ -1560,8 +1726,8 @@ where
 	}
 }
 
-impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref> OnionMessageHandler
-for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
+impl<ES: Deref, NS: Deref, L: Deref, NL: Deref, MR: Deref, OMH: Deref, APH: Deref, CMH: Deref>
+	OnionMessageHandler for OnionMessenger<ES, NS, L, NL, MR, OMH, APH, CMH>
 where
 	ES::Target: EntropySource,
 	NS::Target: NodeSigner,
@@ -1579,7 +1745,9 @@ where
 				log_trace!(
 					logger,
 					"Received an onion message with {} reply_path: {:?}",
-					if reply_path.is_some() { "a" } else { "no" }, message);
+					if reply_path.is_some() { "a" } else { "no" },
+					message
+				);
 
 				let responder = reply_path.map(Responder::new);
 				match message {
@@ -1589,25 +1757,29 @@ where
 							Some(MessageContext::Offers(context)) => Some(context),
 							Some(MessageContext::Custom(_)) => {
 								debug_assert!(false, "Shouldn't have triggered this case.");
-								return
-							}
+								return;
+							},
 						};
-						let response_instructions = self.offers_handler.handle_message(msg, context, responder);
+						let response_instructions =
+							self.offers_handler.handle_message(msg, context, responder);
 						if let Some((msg, instructions)) = response_instructions {
 							let _ = self.handle_onion_message_response(msg, instructions);
 						}
 					},
 					#[cfg(async_payments)]
-					ParsedOnionMessageContents::AsyncPayments(AsyncPaymentsMessage::HeldHtlcAvailable(msg)) => {
-						let response_instructions = self.async_payments_handler.held_htlc_available(
-							msg, responder
-						);
+					ParsedOnionMessageContents::AsyncPayments(
+						AsyncPaymentsMessage::HeldHtlcAvailable(msg),
+					) => {
+						let response_instructions =
+							self.async_payments_handler.held_htlc_available(msg, responder);
 						if let Some((msg, instructions)) = response_instructions {
 							let _ = self.handle_onion_message_response(msg, instructions);
 						}
 					},
 					#[cfg(async_payments)]
-					ParsedOnionMessageContents::AsyncPayments(AsyncPaymentsMessage::ReleaseHeldHtlc(msg)) => {
+					ParsedOnionMessageContents::AsyncPayments(
+						AsyncPaymentsMessage::ReleaseHeldHtlc(msg),
+					) => {
 						self.async_payments_handler.release_held_htlc(msg);
 					},
 					ParsedOnionMessageContents::Custom(msg) => {
@@ -1616,10 +1788,11 @@ where
 							Some(MessageContext::Custom(data)) => Some(data),
 							Some(MessageContext::Offers(_)) => {
 								debug_assert!(false, "Shouldn't have triggered this case.");
-								return
-							}
+								return;
+							},
 						};
-						let response_instructions = self.custom_handler.handle_custom_message(msg, context, responder);
+						let response_instructions =
+							self.custom_handler.handle_custom_message(msg, context, responder);
 						if let Some((msg, instructions)) = response_instructions {
 							let _ = self.handle_onion_message_response(msg, instructions);
 						}
@@ -1629,12 +1802,14 @@ where
 			Ok(PeeledOnion::Forward(next_hop, onion_message)) => {
 				let next_node_id = match next_hop {
 					NextMessageHop::NodeId(pubkey) => pubkey,
-					NextMessageHop::ShortChannelId(scid) => match self.node_id_lookup.next_node_id(scid) {
-						Some(pubkey) => pubkey,
-						None => {
-							log_trace!(self.logger, "Dropping forwarded onion messager: unable to resolve next hop using SCID {}", scid);
-							return
-						},
+					NextMessageHop::ShortChannelId(scid) => {
+						match self.node_id_lookup.next_node_id(scid) {
+							Some(pubkey) => pubkey,
+							None => {
+								log_trace!(self.logger, "Dropping forwarded onion messager: unable to resolve next hop using SCID {}", scid);
+								return;
+							},
+						}
 					},
 				};
 
@@ -1643,8 +1818,9 @@ where
 					log_trace!(
 						logger,
 						"Dropping forwarded onion message to peer {}: outbound buffer full",
-						next_node_id);
-					return
+						next_node_id
+					);
+					return;
 				}
 
 				#[cfg(fuzzing)]
@@ -1653,46 +1829,49 @@ where
 					.or_insert_with(|| OnionMessageRecipient::ConnectedPeer(VecDeque::new()));
 
 				match message_recipients.entry(next_node_id) {
-					hash_map::Entry::Occupied(mut e) if matches!(
-						e.get(), OnionMessageRecipient::ConnectedPeer(..)
-					) => {
+					hash_map::Entry::Occupied(mut e)
+						if matches!(e.get(), OnionMessageRecipient::ConnectedPeer(..)) =>
+					{
 						e.get_mut().enqueue_message(onion_message);
 						log_trace!(logger, "Forwarding an onion message to peer {}", next_node_id);
 					},
 					_ if self.intercept_messages_for_offline_peers => {
-						self.enqueue_intercepted_event(
-							Event::OnionMessageIntercepted {
-								peer_node_id: next_node_id, message: onion_message
-							}
-						);
+						self.enqueue_intercepted_event(Event::OnionMessageIntercepted {
+							peer_node_id: next_node_id,
+							message: onion_message,
+						});
 					},
 					_ => {
 						log_trace!(
 							logger,
 							"Dropping forwarded onion message to disconnected peer {}",
-							next_node_id);
-						return
+							next_node_id
+						);
+						return;
 					},
 				}
 			},
 			Err(e) => {
 				log_error!(logger, "Failed to process onion message {:?}", e);
-			}
+			},
 		}
 	}
 
-	fn peer_connected(&self, their_node_id: &PublicKey, init: &msgs::Init, _inbound: bool) -> Result<(), ()> {
+	fn peer_connected(
+		&self, their_node_id: &PublicKey, init: &msgs::Init, _inbound: bool,
+	) -> Result<(), ()> {
 		if init.features.supports_onion_messages() {
-			self.message_recipients.lock().unwrap()
+			self.message_recipients
+				.lock()
+				.unwrap()
 				.entry(*their_node_id)
 				.or_insert_with(|| OnionMessageRecipient::ConnectedPeer(VecDeque::new()))
 				.mark_connected();
 			if self.intercept_messages_for_offline_peers {
 				let mut pending_peer_connected_events =
 					self.pending_peer_connected_events.lock().unwrap();
-				pending_peer_connected_events.push(
-					Event::OnionMessagePeerConnected { peer_node_id: *their_node_id }
-				);
+				pending_peer_connected_events
+					.push(Event::OnionMessagePeerConnected { peer_node_id: *their_node_id });
 				self.event_notifier.notify();
 			}
 		} else {
@@ -1749,18 +1928,24 @@ where
 		// Enqueue any initiating `OffersMessage`s to send.
 		for (message, instructions) in self.offers_handler.release_pending_messages() {
 			let _ = self.send_onion_message_internal(
-				message, instructions, format_args!("when sending OffersMessage")
+				message,
+				instructions,
+				format_args!("when sending OffersMessage"),
 			);
 		}
 
 		// Enqueue any initiating `CustomMessage`s to send.
 		for (message, instructions) in self.custom_handler.release_pending_custom_messages() {
 			let _ = self.send_onion_message_internal(
-				message, instructions, format_args!("when sending CustomMessage")
+				message,
+				instructions,
+				format_args!("when sending CustomMessage"),
 			);
 		}
 
-		self.message_recipients.lock().unwrap()
+		self.message_recipients
+			.lock()
+			.unwrap()
 			.get_mut(&peer_node_id)
 			.and_then(|buffer| buffer.dequeue_message())
 	}
@@ -1784,7 +1969,7 @@ pub type SimpleArcOnionMessenger<M, T, F, L> = OnionMessenger<
 	Arc<DefaultMessageRouter<Arc<NetworkGraph<Arc<L>>>, Arc<L>, Arc<KeysManager>>>,
 	Arc<SimpleArcChannelManager<M, T, F, L>>,
 	Arc<SimpleArcChannelManager<M, T, F, L>>,
-	IgnoringMessageHandler
+	IgnoringMessageHandler,
 >;
 
 /// Useful for simplifying the parameters of [`SimpleRefChannelManager`] and
@@ -1795,24 +1980,26 @@ pub type SimpleArcOnionMessenger<M, T, F, L> = OnionMessenger<
 /// [`SimpleRefChannelManager`]: crate::ln::channelmanager::SimpleRefChannelManager
 /// [`SimpleRefPeerManager`]: crate::ln::peer_handler::SimpleRefPeerManager
 #[cfg(not(c_bindings))]
-pub type SimpleRefOnionMessenger<
-	'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, 'i, 'j, M, T, F, L
-> = OnionMessenger<
-	&'a KeysManager,
-	&'a KeysManager,
-	&'b L,
-	&'i SimpleRefChannelManager<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, M, T, F, L>,
-	&'j DefaultMessageRouter<&'g NetworkGraph<&'b L>, &'b L, &'a KeysManager>,
-	&'i SimpleRefChannelManager<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, M, T, F, L>,
-	&'i SimpleRefChannelManager<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, M, T, F, L>,
-	IgnoringMessageHandler
->;
+pub type SimpleRefOnionMessenger<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, 'i, 'j, M, T, F, L> =
+	OnionMessenger<
+		&'a KeysManager,
+		&'a KeysManager,
+		&'b L,
+		&'i SimpleRefChannelManager<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, M, T, F, L>,
+		&'j DefaultMessageRouter<&'g NetworkGraph<&'b L>, &'b L, &'a KeysManager>,
+		&'i SimpleRefChannelManager<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, M, T, F, L>,
+		&'i SimpleRefChannelManager<'a, 'b, 'c, 'd, 'e, 'f, 'g, 'h, M, T, F, L>,
+		IgnoringMessageHandler,
+	>;
 
 /// Construct onion packet payloads and keys for sending an onion message along the given
 /// `unblinded_path` to the given `destination`.
-fn packet_payloads_and_keys<T: OnionMessageContents, S: secp256k1::Signing + secp256k1::Verification>(
+fn packet_payloads_and_keys<
+	T: OnionMessageContents,
+	S: secp256k1::Signing + secp256k1::Verification,
+>(
 	secp_ctx: &Secp256k1<S>, unblinded_path: Vec<PublicKey>, destination: Destination, message: T,
-	mut reply_path: Option<BlindedMessagePath>, session_priv: &SecretKey
+	mut reply_path: Option<BlindedMessagePath>, session_priv: &SecretKey,
 ) -> Result<(Vec<(Payload<T>, [u8; 32])>, Vec<onion_utils::OnionKeys>), SendError> {
 	let num_hops = unblinded_path.len() + destination.num_hops();
 	let mut payloads = Vec::with_capacity(num_hops);
@@ -1837,30 +2024,44 @@ fn packet_payloads_and_keys<T: OnionMessageContents, S: secp256k1::Signing + sec
 	let mut prev_control_tlvs_ss = None;
 	let mut final_control_tlvs = None;
 	utils::construct_keys_for_onion_message(
-		secp_ctx, unblinded_path.into_iter(), destination, session_priv,
-		|_, onion_packet_ss, ephemeral_pubkey, control_tlvs_ss, unblinded_pk_opt, enc_payload_opt| {
+		secp_ctx,
+		unblinded_path.into_iter(),
+		destination,
+		session_priv,
+		|_,
+		 onion_packet_ss,
+		 ephemeral_pubkey,
+		 control_tlvs_ss,
+		 unblinded_pk_opt,
+		 enc_payload_opt| {
 			if num_unblinded_hops != 0 && unblinded_path_idx < num_unblinded_hops {
 				if let Some(ss) = prev_control_tlvs_ss.take() {
-					payloads.push((Payload::Forward(ForwardControlTlvs::Unblinded(
-						ForwardTlvs {
+					payloads.push((
+						Payload::Forward(ForwardControlTlvs::Unblinded(ForwardTlvs {
 							next_hop: NextMessageHop::NodeId(unblinded_pk_opt.unwrap()),
 							next_blinding_override: None,
-						}
-					)), ss));
+						})),
+						ss,
+					));
 				}
 				prev_control_tlvs_ss = Some(control_tlvs_ss);
 				unblinded_path_idx += 1;
 			} else if let Some((intro_node_id, blinding_pt)) = intro_node_id_blinding_pt.take() {
 				if let Some(control_tlvs_ss) = prev_control_tlvs_ss.take() {
-					payloads.push((Payload::Forward(ForwardControlTlvs::Unblinded(ForwardTlvs {
-						next_hop: NextMessageHop::NodeId(intro_node_id),
-						next_blinding_override: Some(blinding_pt),
-					})), control_tlvs_ss));
+					payloads.push((
+						Payload::Forward(ForwardControlTlvs::Unblinded(ForwardTlvs {
+							next_hop: NextMessageHop::NodeId(intro_node_id),
+							next_blinding_override: Some(blinding_pt),
+						})),
+						control_tlvs_ss,
+					));
 				}
 			}
 			if blinded_path_idx < num_blinded_hops.saturating_sub(1) && enc_payload_opt.is_some() {
-				payloads.push((Payload::Forward(ForwardControlTlvs::Blinded(enc_payload_opt.unwrap())),
-					control_tlvs_ss));
+				payloads.push((
+					Payload::Forward(ForwardControlTlvs::Blinded(enc_payload_opt.unwrap())),
+					control_tlvs_ss,
+				));
 				blinded_path_idx += 1;
 			} else if let Some(encrypted_payload) = enc_payload_opt {
 				final_control_tlvs = Some(ReceiveControlTlvs::Blinded(encrypted_payload));
@@ -1877,28 +2078,34 @@ fn packet_payloads_and_keys<T: OnionMessageContents, S: secp256k1::Signing + sec
 				rho,
 				mu,
 			});
-		}
-	).map_err(|e| SendError::Secp256k1(e))?;
+		},
+	)
+	.map_err(|e| SendError::Secp256k1(e))?;
 
 	if let Some(control_tlvs) = final_control_tlvs {
-		payloads.push((Payload::Receive {
-			control_tlvs,
-			reply_path: reply_path.take(),
-			message,
-		}, prev_control_tlvs_ss.unwrap()));
+		payloads.push((
+			Payload::Receive { control_tlvs, reply_path: reply_path.take(), message },
+			prev_control_tlvs_ss.unwrap(),
+		));
 	} else {
-		payloads.push((Payload::Receive {
-			control_tlvs: ReceiveControlTlvs::Unblinded(ReceiveTlvs { context: None }),
-			reply_path: reply_path.take(),
-			message,
-		}, prev_control_tlvs_ss.unwrap()));
+		payloads.push((
+			Payload::Receive {
+				control_tlvs: ReceiveControlTlvs::Unblinded(ReceiveTlvs { context: None }),
+				reply_path: reply_path.take(),
+				message,
+			},
+			prev_control_tlvs_ss.unwrap(),
+		));
 	}
 
 	Ok((payloads, onion_packet_keys))
 }
 
 /// Errors if the serialized payload size exceeds onion_message::BIG_PACKET_HOP_DATA_LEN
-fn construct_onion_message_packet<T: OnionMessageContents>(payloads: Vec<(Payload<T>, [u8; 32])>, onion_keys: Vec<onion_utils::OnionKeys>, prng_seed: [u8; 32]) -> Result<Packet, ()> {
+fn construct_onion_message_packet<T: OnionMessageContents>(
+	payloads: Vec<(Payload<T>, [u8; 32])>, onion_keys: Vec<onion_utils::OnionKeys>,
+	prng_seed: [u8; 32],
+) -> Result<Packet, ()> {
 	// Spec rationale:
 	// "`len` allows larger messages to be sent than the standard 1300 bytes allowed for an HTLC
 	// onion, but this should be used sparingly as it is reduces anonymity set, hence the
@@ -1908,8 +2115,14 @@ fn construct_onion_message_packet<T: OnionMessageContents>(payloads: Vec<(Payloa
 		SMALL_PACKET_HOP_DATA_LEN
 	} else if payloads_ser_len <= BIG_PACKET_HOP_DATA_LEN {
 		BIG_PACKET_HOP_DATA_LEN
-	} else { return Err(()) };
+	} else {
+		return Err(());
+	};
 
 	onion_utils::construct_onion_message_packet::<_, _>(
-		payloads, onion_keys, prng_seed, hop_data_len)
+		payloads,
+		onion_keys,
+		prng_seed,
+		hop_data_len,
+	)
 }

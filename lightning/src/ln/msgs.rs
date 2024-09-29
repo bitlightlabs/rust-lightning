@@ -25,39 +25,43 @@
 //! track the network on the less-secure system.
 
 use bitcoin::constants::ChainHash;
-use bitcoin::secp256k1::PublicKey;
-use bitcoin::secp256k1::ecdsa::Signature;
-use bitcoin::{secp256k1, Witness};
+use bitcoin::hash_types::Txid;
 use bitcoin::script::ScriptBuf;
-use bitcoin::hash_types::Txid;use rgb_lib::{ContractId, RgbTransport};
-
+use bitcoin::secp256k1::ecdsa::Signature;
+use bitcoin::secp256k1::PublicKey;
+use bitcoin::{secp256k1, Witness};
+use rgb_lib::{ContractId, RgbTransport};
 
 use crate::blinded_path::payment::{BlindedPaymentTlvs, ForwardTlvs, ReceiveTlvs};
-use crate::ln::types::{ChannelId, PaymentPreimage, PaymentHash, PaymentSecret};
 use crate::ln::features::{ChannelFeatures, ChannelTypeFeatures, InitFeatures, NodeFeatures};
 use crate::ln::onion_utils;
+use crate::ln::types::{ChannelId, PaymentHash, PaymentPreimage, PaymentSecret};
 use crate::onion_message;
 use crate::sign::{NodeSigner, Recipient};
 
 #[allow(unused_imports)]
 use crate::prelude::*;
 
+use crate::io::{self, Cursor, Read};
+use crate::io_extras::read_to_end;
 use core::fmt;
 use core::fmt::Debug;
+use core::fmt::Display;
 use core::ops::Deref;
 #[cfg(feature = "std")]
 use core::str::FromStr;
 #[cfg(feature = "std")]
 use std::net::SocketAddr;
-use core::fmt::Display;
-use crate::io::{self, Cursor, Read};
-use crate::io_extras::read_to_end;
 
-use crate::events::MessageSendEventsProvider;
 use crate::crypto::streams::ChaChaPolyReadAdapter;
-use crate::util::logger;
-use crate::util::ser::{BigSize, FixedLengthReader, HighZeroBytesDroppedBigSize, Hostname, LengthRead, LengthReadable, LengthReadableArgs, Readable, ReadableArgs, TransactionU16LenLimited, WithoutLength, Writeable, Writer};
+use crate::events::MessageSendEventsProvider;
 use crate::util::base32;
+use crate::util::logger;
+use crate::util::ser::{
+	BigSize, FixedLengthReader, HighZeroBytesDroppedBigSize, Hostname, LengthRead, LengthReadable,
+	LengthReadableArgs, Readable, ReadableArgs, TransactionU16LenLimited, WithoutLength, Writeable,
+	Writer,
+};
 
 use crate::routing::gossip::{NodeAlias, NodeId};
 
@@ -67,7 +71,10 @@ pub(crate) const MAX_VALUE_MSAT: u64 = 21_000_000_0000_0000_000;
 #[cfg(taproot)]
 /// A partial signature that also contains the Musig2 nonce its signer used
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct PartialSignatureWithNonce(pub musig2::types::PartialSignature, pub musig2::types::PublicNonce);
+pub struct PartialSignatureWithNonce(
+	pub musig2::types::PartialSignature,
+	pub musig2::types::PublicNonce,
+);
 
 /// An error in decoding a message or struct.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -235,8 +242,8 @@ pub struct CommonOpenChannelFields {
 	///
 	/// If this is `None`, we derive the channel type from the intersection of our
 	/// feature bits with our counterparty's feature bits from the [`Init`] message.
-	pub channel_type: Option<ChannelTypeFeatures>,pub consignment_endpoint: Option<RgbTransport>,
-
+	pub channel_type: Option<ChannelTypeFeatures>,
+	pub consignment_endpoint: Option<RgbTransport>,
 }
 
 impl CommonOpenChannelFields {
@@ -408,7 +415,7 @@ pub struct FundingCreated {
 	pub partial_signature_with_nonce: Option<PartialSignatureWithNonce>,
 	#[cfg(taproot)]
 	/// Next nonce the channel acceptor should use to finalize the funding output signature
-	pub next_local_nonce: Option<musig2::types::PublicNonce>
+	pub next_local_nonce: Option<musig2::types::PublicNonce>,
 }
 
 /// A [`funding_signed`] message to be sent to or received from a peer.
@@ -698,13 +705,13 @@ pub struct UpdateAddHTLC {
 	pub onion_routing_packet: OnionPacket,
 	/// Provided if we are relaying or receiving a payment within a blinded path, to decrypt the onion
 	/// routing packet and the recipient-provided encrypted payload within.
-	pub blinding_point: Option<PublicKey>,pub amount_rgb: Option<u64>,
-
+	pub blinding_point: Option<PublicKey>,
+	pub amount_rgb: Option<u64>,
 }
 
- /// An onion message to be sent to or received from a peer.
- ///
- // TODO: update with link to OM when they are merged into the BOLTs
+/// An onion message to be sent to or received from a peer.
+///
+// TODO: update with link to OM when they are merged into the BOLTs
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct OnionMessage {
 	/// Used in decrypting the onion packet's payload.
@@ -792,7 +799,7 @@ pub struct RevokeAndACK {
 	pub next_per_commitment_point: PublicKey,
 	#[cfg(taproot)]
 	/// Musig nonce the recipient should use in their next commitment signature message
-	pub next_local_nonce: Option<musig2::types::PublicNonce>
+	pub next_local_nonce: Option<musig2::types::PublicNonce>,
 }
 
 /// An [`update_fee`] message to be sent to or received from a peer
@@ -890,23 +897,23 @@ impl SocketAddress {
 	/// by this.
 	pub(crate) fn get_id(&self) -> u8 {
 		match self {
-			&SocketAddress::TcpIpV4 {..} => { 1 },
-			&SocketAddress::TcpIpV6 {..} => { 2 },
-			&SocketAddress::OnionV2(_) => { 3 },
-			&SocketAddress::OnionV3 {..} => { 4 },
-			&SocketAddress::Hostname {..} => { 5 },
+			&SocketAddress::TcpIpV4 { .. } => 1,
+			&SocketAddress::TcpIpV6 { .. } => 2,
+			&SocketAddress::OnionV2(_) => 3,
+			&SocketAddress::OnionV3 { .. } => 4,
+			&SocketAddress::Hostname { .. } => 5,
 		}
 	}
 
 	/// Strict byte-length of address descriptor, 1-byte type not recorded
 	fn len(&self) -> u16 {
 		match self {
-			&SocketAddress::TcpIpV4 { .. } => { 6 },
-			&SocketAddress::TcpIpV6 { .. } => { 18 },
-			&SocketAddress::OnionV2(_) => { 12 },
-			&SocketAddress::OnionV3 { .. } => { 37 },
+			&SocketAddress::TcpIpV4 { .. } => 6,
+			&SocketAddress::TcpIpV6 { .. } => 18,
+			&SocketAddress::OnionV2(_) => 12,
+			&SocketAddress::OnionV3 { .. } => 37,
 			// Consists of 1-byte hostname length, hostname bytes, and 2-byte port.
-			&SocketAddress::Hostname { ref hostname, .. } => { u16::from(hostname.len()) + 3 },
+			&SocketAddress::Hostname { ref hostname, .. } => u16::from(hostname.len()) + 3,
 		}
 	}
 
@@ -917,11 +924,11 @@ impl SocketAddress {
 
 	pub(crate) fn is_tor(&self) -> bool {
 		match self {
-			&SocketAddress::TcpIpV4 {..} => false,
-			&SocketAddress::TcpIpV6 {..} => false,
+			&SocketAddress::TcpIpV4 { .. } => false,
+			&SocketAddress::TcpIpV6 { .. } => false,
 			&SocketAddress::OnionV2(_) => true,
-			&SocketAddress::OnionV3 {..} => true,
-			&SocketAddress::Hostname {..} => false,
+			&SocketAddress::OnionV3 { .. } => true,
+			&SocketAddress::Hostname { .. } => false,
 		}
 	}
 }
@@ -964,33 +971,25 @@ impl Readable for Result<SocketAddress, u8> {
 	fn read<R: Read>(reader: &mut R) -> Result<Result<SocketAddress, u8>, DecodeError> {
 		let byte = <u8 as Readable>::read(reader)?;
 		match byte {
-			1 => {
-				Ok(Ok(SocketAddress::TcpIpV4 {
-					addr: Readable::read(reader)?,
-					port: Readable::read(reader)?,
-				}))
-			},
-			2 => {
-				Ok(Ok(SocketAddress::TcpIpV6 {
-					addr: Readable::read(reader)?,
-					port: Readable::read(reader)?,
-				}))
-			},
+			1 => Ok(Ok(SocketAddress::TcpIpV4 {
+				addr: Readable::read(reader)?,
+				port: Readable::read(reader)?,
+			})),
+			2 => Ok(Ok(SocketAddress::TcpIpV6 {
+				addr: Readable::read(reader)?,
+				port: Readable::read(reader)?,
+			})),
 			3 => Ok(Ok(SocketAddress::OnionV2(Readable::read(reader)?))),
-			4 => {
-				Ok(Ok(SocketAddress::OnionV3 {
-					ed25519_pubkey: Readable::read(reader)?,
-					checksum: Readable::read(reader)?,
-					version: Readable::read(reader)?,
-					port: Readable::read(reader)?,
-				}))
-			},
-			5 => {
-				Ok(Ok(SocketAddress::Hostname {
-					hostname: Readable::read(reader)?,
-					port: Readable::read(reader)?,
-				}))
-			},
+			4 => Ok(Ok(SocketAddress::OnionV3 {
+				ed25519_pubkey: Readable::read(reader)?,
+				checksum: Readable::read(reader)?,
+				version: Readable::read(reader)?,
+				port: Readable::read(reader)?,
+			})),
+			5 => Ok(Ok(SocketAddress::Hostname {
+				hostname: Readable::read(reader)?,
+				port: Readable::read(reader)?,
+			})),
 			_ => return Ok(Err(byte)),
 		}
 	}
@@ -1033,26 +1032,26 @@ impl fmt::Display for SocketAddressParseError {
 
 #[cfg(feature = "std")]
 impl From<std::net::SocketAddrV4> for SocketAddress {
-		fn from(addr: std::net::SocketAddrV4) -> Self {
-			SocketAddress::TcpIpV4 { addr: addr.ip().octets(), port: addr.port() }
-		}
+	fn from(addr: std::net::SocketAddrV4) -> Self {
+		SocketAddress::TcpIpV4 { addr: addr.ip().octets(), port: addr.port() }
+	}
 }
 
 #[cfg(feature = "std")]
 impl From<std::net::SocketAddrV6> for SocketAddress {
-		fn from(addr: std::net::SocketAddrV6) -> Self {
-			SocketAddress::TcpIpV6 { addr: addr.ip().octets(), port: addr.port() }
-		}
+	fn from(addr: std::net::SocketAddrV6) -> Self {
+		SocketAddress::TcpIpV6 { addr: addr.ip().octets(), port: addr.port() }
+	}
 }
 
 #[cfg(feature = "std")]
 impl From<std::net::SocketAddr> for SocketAddress {
-		fn from(addr: std::net::SocketAddr) -> Self {
-			match addr {
-				std::net::SocketAddr::V4(addr) => addr.into(),
-				std::net::SocketAddr::V6(addr) => addr.into(),
-			}
+	fn from(addr: std::net::SocketAddr) -> Self {
+		match addr {
+			std::net::SocketAddr::V4(addr) => addr.into(),
+			std::net::SocketAddr::V6(addr) => addr.into(),
 		}
+	}
 }
 
 #[cfg(feature = "std")]
@@ -1065,23 +1064,25 @@ impl std::net::ToSocketAddrs for SocketAddress {
 				let ip_addr = std::net::Ipv4Addr::from(*addr);
 				let socket_addr = SocketAddr::new(ip_addr.into(), *port);
 				Ok(vec![socket_addr].into_iter())
-			}
+			},
 			SocketAddress::TcpIpV6 { addr, port } => {
 				let ip_addr = std::net::Ipv6Addr::from(*addr);
 				let socket_addr = SocketAddr::new(ip_addr.into(), *port);
 				Ok(vec![socket_addr].into_iter())
-			}
+			},
 			SocketAddress::Hostname { ref hostname, port } => {
 				(hostname.as_str(), *port).to_socket_addrs()
-			}
-			SocketAddress::OnionV2(..) => {
-				Err(std::io::Error::new(std::io::ErrorKind::Other, "Resolution of OnionV2 \
-				addresses is currently unsupported."))
-			}
-			SocketAddress::OnionV3 { .. } => {
-				Err(std::io::Error::new(std::io::ErrorKind::Other, "Resolution of OnionV3 \
-				addresses is currently unsupported."))
-			}
+			},
+			SocketAddress::OnionV2(..) => Err(std::io::Error::new(
+				std::io::ErrorKind::Other,
+				"Resolution of OnionV2 \
+				addresses is currently unsupported.",
+			)),
+			SocketAddress::OnionV3 { .. } => Err(std::io::Error::new(
+				std::io::ErrorKind::Other,
+				"Resolution of OnionV3 \
+				addresses is currently unsupported.",
+			)),
 		}
 	}
 }
@@ -1089,13 +1090,17 @@ impl std::net::ToSocketAddrs for SocketAddress {
 /// Parses an OnionV3 host and port into a [`SocketAddress::OnionV3`].
 ///
 /// The host part must end with ".onion".
-pub fn parse_onion_address(host: &str, port: u16) -> Result<SocketAddress, SocketAddressParseError> {
+pub fn parse_onion_address(
+	host: &str, port: u16,
+) -> Result<SocketAddress, SocketAddressParseError> {
 	if host.ends_with(".onion") {
 		let domain = &host[..host.len() - ".onion".len()];
 		if domain.len() != 56 {
 			return Err(SocketAddressParseError::InvalidOnionV3);
 		}
-		let onion =  base32::Alphabet::RFC4648 { padding: false }.decode(&domain).map_err(|_| SocketAddressParseError::InvalidOnionV3)?;
+		let onion = base32::Alphabet::RFC4648 { padding: false }
+			.decode(&domain)
+			.map_err(|_| SocketAddressParseError::InvalidOnionV3)?;
 		if onion.len() != 35 {
 			return Err(SocketAddressParseError::InvalidOnionV3);
 		}
@@ -1106,7 +1111,6 @@ pub fn parse_onion_address(host: &str, port: u16) -> Result<SocketAddress, Socke
 		ed25519_pubkey.copy_from_slice(&onion[3..35]);
 		let checksum = u16::from_be_bytes([first_checksum_flag, second_checksum_flag]);
 		return Ok(SocketAddress::OnionV3 { ed25519_pubkey, checksum, version, port });
-
 	} else {
 		return Err(SocketAddressParseError::InvalidInput);
 	}
@@ -1154,14 +1158,16 @@ impl FromStr for SocketAddress {
 					None => return Err(SocketAddressParseError::InvalidInput),
 				};
 				let host = &s[..trimmed_input];
-				let port: u16 = s[trimmed_input + 1..].parse().map_err(|_| SocketAddressParseError::InvalidPort)?;
+				let port: u16 = s[trimmed_input + 1..]
+					.parse()
+					.map_err(|_| SocketAddressParseError::InvalidPort)?;
 				if host.ends_with(".onion") {
 					return parse_onion_address(host, port);
 				};
 				if let Ok(hostname) = Hostname::try_from(s[..trimmed_input].to_string()) {
 					return Ok(SocketAddress::Hostname { hostname, port });
 				};
-				return Err(SocketAddressParseError::SocketAddrParse)
+				return Err(SocketAddressParseError::SocketAddrParse);
 			},
 		}
 	}
@@ -1174,7 +1180,7 @@ pub enum UnsignedGossipMessage<'a> {
 	/// An unsigned channel update.
 	ChannelUpdate(&'a UnsignedChannelUpdate),
 	/// An unsigned node announcement.
-	NodeAnnouncement(&'a UnsignedNodeAnnouncement)
+	NodeAnnouncement(&'a UnsignedNodeAnnouncement),
 }
 
 impl<'a> Writeable for UnsignedGossipMessage<'a> {
@@ -1247,7 +1253,8 @@ pub struct UnsignedChannelAnnouncement {
 	/// The funding key for the first node
 	pub bitcoin_key_1: NodeId,
 	/// The funding key for the second node
-	pub bitcoin_key_2: NodeId,pub contract_id: Option<ContractId>,
+	pub bitcoin_key_2: NodeId,
+	pub contract_id: Option<ContractId>,
 
 	/// Excess data which was signed as a part of the message which we do not (yet) understand how
 	/// to decode.
@@ -1302,7 +1309,8 @@ pub struct UnsignedChannelUpdate {
 	/// The maximum HTLC value incoming to sender, in milli-satoshi.
 	///
 	/// This used to be optional.
-	pub htlc_maximum_msat: u64,pub htlc_maximum_rgb: u64,
+	pub htlc_maximum_msat: u64,
+	pub htlc_maximum_rgb: u64,
 
 	/// The base HTLC fee charged by sender, in milli-satoshi
 	pub fee_base_msat: u32,
@@ -1429,7 +1437,7 @@ pub enum ErrorAction {
 	/// The peer took some action which made us think they were useless. Disconnect them.
 	DisconnectPeer {
 		/// An error message which we should make an effort to send before we disconnect.
-		msg: Option<ErrorMessage>
+		msg: Option<ErrorMessage>,
 	},
 	/// The peer did something incorrect. Tell them without closing any channels and disconnect them.
 	DisconnectPeerWithWarning {
@@ -1493,7 +1501,7 @@ pub struct CommitmentUpdate {
 ///
 /// Messages MAY be called in parallel when they originate from different `their_node_ids`, however
 /// they MUST NOT be called in parallel when the two calls have the same `their_node_id`.
-pub trait ChannelMessageHandler : MessageSendEventsProvider {
+pub trait ChannelMessageHandler: MessageSendEventsProvider {
 	// Channel init:
 	/// Handle an incoming `open_channel` message from the given peer.
 	fn handle_open_channel(&self, their_node_id: &PublicKey, msg: &OpenChannel);
@@ -1559,7 +1567,9 @@ pub trait ChannelMessageHandler : MessageSendEventsProvider {
 	/// Handle an incoming `update_fail_htlc` message from the given peer.
 	fn handle_update_fail_htlc(&self, their_node_id: &PublicKey, msg: &UpdateFailHTLC);
 	/// Handle an incoming `update_fail_malformed_htlc` message from the given peer.
-	fn handle_update_fail_malformed_htlc(&self, their_node_id: &PublicKey, msg: &UpdateFailMalformedHTLC);
+	fn handle_update_fail_malformed_htlc(
+		&self, their_node_id: &PublicKey, msg: &UpdateFailMalformedHTLC,
+	);
 	/// Handle an incoming `commitment_signed` message from the given peer.
 	fn handle_commitment_signed(&self, their_node_id: &PublicKey, msg: &CommitmentSigned);
 	/// Handle an incoming `revoke_and_ack` message from the given peer.
@@ -1570,7 +1580,9 @@ pub trait ChannelMessageHandler : MessageSendEventsProvider {
 
 	// Channel-to-announce:
 	/// Handle an incoming `announcement_signatures` message from the given peer.
-	fn handle_announcement_signatures(&self, their_node_id: &PublicKey, msg: &AnnouncementSignatures);
+	fn handle_announcement_signatures(
+		&self, their_node_id: &PublicKey, msg: &AnnouncementSignatures,
+	);
 
 	// Connection loss/reestablish:
 	/// Indicates a connection to the peer failed/an existing connection was lost.
@@ -1581,7 +1593,9 @@ pub trait ChannelMessageHandler : MessageSendEventsProvider {
 	/// May return an `Err(())` if the features the peer supports are not sufficient to communicate
 	/// with us. Implementors should be somewhat conservative about doing so, however, as other
 	/// message handlers may still wish to communicate with this peer.
-	fn peer_connected(&self, their_node_id: &PublicKey, msg: &Init, inbound: bool) -> Result<(), ()>;
+	fn peer_connected(
+		&self, their_node_id: &PublicKey, msg: &Init, inbound: bool,
+	) -> Result<(), ()>;
 	/// Handle an incoming `channel_reestablish` message from the given peer.
 	fn handle_channel_reestablish(&self, their_node_id: &PublicKey, msg: &ChannelReestablish);
 
@@ -1619,25 +1633,31 @@ pub trait ChannelMessageHandler : MessageSendEventsProvider {
 /// For messages enabled with the `gossip_queries` feature there are potential DoS vectors when
 /// handling inbound queries. Implementors using an on-disk network graph should be aware of
 /// repeated disk I/O for queries accessing different parts of the network graph.
-pub trait RoutingMessageHandler : MessageSendEventsProvider {
+pub trait RoutingMessageHandler: MessageSendEventsProvider {
 	/// Handle an incoming `node_announcement` message, returning `true` if it should be forwarded on,
 	/// `false` or returning an `Err` otherwise.
 	fn handle_node_announcement(&self, msg: &NodeAnnouncement) -> Result<bool, LightningError>;
 	/// Handle a `channel_announcement` message, returning `true` if it should be forwarded on, `false`
 	/// or returning an `Err` otherwise.
-	fn handle_channel_announcement(&self, msg: &ChannelAnnouncement) -> Result<bool, LightningError>;
+	fn handle_channel_announcement(
+		&self, msg: &ChannelAnnouncement,
+	) -> Result<bool, LightningError>;
 	/// Handle an incoming `channel_update` message, returning true if it should be forwarded on,
 	/// `false` or returning an `Err` otherwise.
 	fn handle_channel_update(&self, msg: &ChannelUpdate) -> Result<bool, LightningError>;
 	/// Gets channel announcements and updates required to dump our routing table to a remote node,
 	/// starting at the `short_channel_id` indicated by `starting_point` and including announcements
 	/// for a single channel.
-	fn get_next_channel_announcement(&self, starting_point: u64) -> Option<(ChannelAnnouncement, Option<ChannelUpdate>, Option<ChannelUpdate>)>;
+	fn get_next_channel_announcement(
+		&self, starting_point: u64,
+	) -> Option<(ChannelAnnouncement, Option<ChannelUpdate>, Option<ChannelUpdate>)>;
 	/// Gets a node announcement required to dump our routing table to a remote node, starting at
 	/// the node *after* the provided pubkey and including up to one announcement immediately
 	/// higher (as defined by `<PublicKey as Ord>::cmp`) than `starting_point`.
 	/// If `None` is provided for `starting_point`, we start at the first node.
-	fn get_next_node_announcement(&self, starting_point: Option<&NodeId>) -> Option<NodeAnnouncement>;
+	fn get_next_node_announcement(
+		&self, starting_point: Option<&NodeId>,
+	) -> Option<NodeAnnouncement>;
 	/// Called when a connection is established with a peer. This can be used to
 	/// perform routing table synchronization using a strategy defined by the
 	/// implementor.
@@ -1645,22 +1665,32 @@ pub trait RoutingMessageHandler : MessageSendEventsProvider {
 	/// May return an `Err(())` if the features the peer supports are not sufficient to communicate
 	/// with us. Implementors should be somewhat conservative about doing so, however, as other
 	/// message handlers may still wish to communicate with this peer.
-	fn peer_connected(&self, their_node_id: &PublicKey, init: &Init, inbound: bool) -> Result<(), ()>;
+	fn peer_connected(
+		&self, their_node_id: &PublicKey, init: &Init, inbound: bool,
+	) -> Result<(), ()>;
 	/// Handles the reply of a query we initiated to learn about channels
 	/// for a given range of blocks. We can expect to receive one or more
 	/// replies to a single query.
-	fn handle_reply_channel_range(&self, their_node_id: &PublicKey, msg: ReplyChannelRange) -> Result<(), LightningError>;
+	fn handle_reply_channel_range(
+		&self, their_node_id: &PublicKey, msg: ReplyChannelRange,
+	) -> Result<(), LightningError>;
 	/// Handles the reply of a query we initiated asking for routing gossip
 	/// messages for a list of channels. We should receive this message when
 	/// a node has completed its best effort to send us the pertaining routing
 	/// gossip messages.
-	fn handle_reply_short_channel_ids_end(&self, their_node_id: &PublicKey, msg: ReplyShortChannelIdsEnd) -> Result<(), LightningError>;
+	fn handle_reply_short_channel_ids_end(
+		&self, their_node_id: &PublicKey, msg: ReplyShortChannelIdsEnd,
+	) -> Result<(), LightningError>;
 	/// Handles when a peer asks us to send a list of `short_channel_id`s
 	/// for the requested range of blocks.
-	fn handle_query_channel_range(&self, their_node_id: &PublicKey, msg: QueryChannelRange) -> Result<(), LightningError>;
+	fn handle_query_channel_range(
+		&self, their_node_id: &PublicKey, msg: QueryChannelRange,
+	) -> Result<(), LightningError>;
 	/// Handles when a peer asks us to send routing gossip messages for a
 	/// list of `short_channel_id`s.
-	fn handle_query_short_channel_ids(&self, their_node_id: &PublicKey, msg: QueryShortChannelIds) -> Result<(), LightningError>;
+	fn handle_query_short_channel_ids(
+		&self, their_node_id: &PublicKey, msg: QueryShortChannelIds,
+	) -> Result<(), LightningError>;
 
 	// Handler queueing status:
 	/// Indicates that there are a large number of [`ChannelAnnouncement`] (or other) messages
@@ -1696,7 +1726,9 @@ pub trait OnionMessageHandler {
 	/// May return an `Err(())` if the features the peer supports are not sufficient to communicate
 	/// with us. Implementors should be somewhat conservative about doing so, however, as other
 	/// message handlers may still wish to communicate with this peer.
-	fn peer_connected(&self, their_node_id: &PublicKey, init: &Init, inbound: bool) -> Result<(), ()>;
+	fn peer_connected(
+		&self, their_node_id: &PublicKey, init: &Init, inbound: bool,
+	) -> Result<(), ()>;
 
 	/// Indicates a connection to the peer failed/an existing connection was lost. Allows handlers to
 	/// drop and refuse to forward onion messages to this peer.
@@ -1721,7 +1753,6 @@ pub trait OnionMessageHandler {
 }
 
 #[derive(Clone, Debug)]
-
 #[cfg_attr(test, derive(Debug, PartialEq))]
 /// Information communicated in the onion to the recipient for multi-part tracking and proof that
 /// the payment is associated with an invoice.
@@ -1737,11 +1768,11 @@ pub struct FinalOnionHopData {
 }
 
 mod fuzzy_internal_msgs {
-	use bitcoin::secp256k1::PublicKey;
-	use crate::blinded_path::payment::{PaymentConstraints, PaymentContext, PaymentRelay};
-	use crate::ln::types::{PaymentPreimage, PaymentSecret};
-	use crate::ln::features::BlindedHopFeatures;
 	use super::{FinalOnionHopData, TrampolineOnionPacket};
+	use crate::blinded_path::payment::{PaymentConstraints, PaymentContext, PaymentRelay};
+	use crate::ln::features::BlindedHopFeatures;
+	use crate::ln::types::{PaymentPreimage, PaymentSecret};
+	use bitcoin::secp256k1::PublicKey;
 
 	#[allow(unused_imports)]
 	use crate::prelude::*;
@@ -1754,8 +1785,8 @@ mod fuzzy_internal_msgs {
 			short_channel_id: u64,
 			/// The value, in msat, of the payment after this hop's fee is deducted.
 			amt_to_forward: u64,
-			outgoing_cltv_value: u32,rgb_amount_to_forward: Option<u64>,
-
+			outgoing_cltv_value: u32,
+			rgb_amount_to_forward: Option<u64>,
 		},
 		Receive {
 			payment_data: Option<FinalOnionHopData>,
@@ -1763,15 +1794,16 @@ mod fuzzy_internal_msgs {
 			keysend_preimage: Option<PaymentPreimage>,
 			custom_tlvs: Vec<(u64, Vec<u8>)>,
 			sender_intended_htlc_amt_msat: u64,
-			cltv_expiry_height: u32,rgb_amount_to_forward: Option<u64>,
-
+			cltv_expiry_height: u32,
+			rgb_amount_to_forward: Option<u64>,
 		},
 		BlindedForward {
 			short_channel_id: u64,
 			payment_relay: PaymentRelay,
 			payment_constraints: PaymentConstraints,
 			features: BlindedHopFeatures,
-			intro_node_blinding_point: Option<PublicKey>,rgb_amount_to_forward: Option<u64>,
+			intro_node_blinding_point: Option<PublicKey>,
+			rgb_amount_to_forward: Option<u64>,
 
 			next_blinding_override: Option<PublicKey>,
 		},
@@ -1785,17 +1817,17 @@ mod fuzzy_internal_msgs {
 			intro_node_blinding_point: Option<PublicKey>,
 			keysend_preimage: Option<PaymentPreimage>,
 			custom_tlvs: Vec<(u64, Vec<u8>)>,
-		}
+		},
 	}
 
 	#[derive(Debug)]
-pub(crate) enum OutboundOnionPayload<'a> {
+	pub(crate) enum OutboundOnionPayload<'a> {
 		Forward {
 			short_channel_id: u64,
 			/// The value, in msat, of the payment after this hop's fee is deducted.
 			amt_to_forward: u64,
-			outgoing_cltv_value: u32,rgb_amount_to_forward: Option<u64>,
-
+			outgoing_cltv_value: u32,
+			rgb_amount_to_forward: Option<u64>,
 		},
 		#[allow(unused)]
 		TrampolineEntrypoint {
@@ -1810,13 +1842,13 @@ pub(crate) enum OutboundOnionPayload<'a> {
 			keysend_preimage: Option<PaymentPreimage>,
 			custom_tlvs: &'a Vec<(u64, Vec<u8>)>,
 			sender_intended_htlc_amt_msat: u64,
-			cltv_expiry_height: u32,rgb_amount_to_forward: Option<u64>,
-
+			cltv_expiry_height: u32,
+			rgb_amount_to_forward: Option<u64>,
 		},
 		BlindedForward {
 			encrypted_tlvs: &'a Vec<u8>,
-			intro_node_blinding_point: Option<PublicKey>,rgb_amount_to_forward: Option<u64>,
-
+			intro_node_blinding_point: Option<PublicKey>,
+			rgb_amount_to_forward: Option<u64>,
 		},
 		BlindedReceive {
 			sender_intended_htlc_amt_msat: u64,
@@ -1826,7 +1858,7 @@ pub(crate) enum OutboundOnionPayload<'a> {
 			intro_node_blinding_point: Option<PublicKey>, // Set if the introduction node of the blinded path is the final node
 			keysend_preimage: Option<PaymentPreimage>,
 			custom_tlvs: &'a Vec<(u64, Vec<u8>)>,
-		}
+		},
 	}
 
 	pub(crate) enum OutboundTrampolinePayload {
@@ -1837,7 +1869,7 @@ pub(crate) enum OutboundOnionPayload<'a> {
 			outgoing_cltv_value: u32,
 			/// The node id to which the trampoline node must find a route
 			outgoing_node_id: PublicKey,
-		}
+		},
 	}
 
 	pub struct DecodedOnionErrorPacket {
@@ -1863,7 +1895,7 @@ pub struct OnionPacket {
 	/// like.
 	pub public_key: Result<PublicKey, secp256k1::Error>,
 	/// 1300 bytes encrypted payload for the next hop.
-	pub hop_data: [u8; 20*65],
+	pub hop_data: [u8; 20 * 65],
 	/// HMAC to verify the integrity of hop_data.
 	pub hmac: [u8; 32],
 }
@@ -1871,18 +1903,17 @@ pub struct OnionPacket {
 impl onion_utils::Packet for OnionPacket {
 	type Data = onion_utils::FixedSizeOnionPacket;
 	fn new(pubkey: PublicKey, hop_data: onion_utils::FixedSizeOnionPacket, hmac: [u8; 32]) -> Self {
-		Self {
-			version: 0,
-			public_key: Ok(pubkey),
-			hop_data: hop_data.0,
-			hmac,
-		}
+		Self { version: 0, public_key: Ok(pubkey), hop_data: hop_data.0, hmac }
 	}
 }
 
 impl fmt::Debug for OnionPacket {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.write_fmt(format_args!("OnionPacket version {} with hmac {:?}", self.version, &self.hmac[..]))
+		f.write_fmt(format_args!(
+			"OnionPacket version {} with hmac {:?}",
+			self.version,
+			&self.hmac[..]
+		))
 	}
 }
 
@@ -1907,12 +1938,7 @@ pub struct TrampolineOnionPacket {
 impl onion_utils::Packet for TrampolineOnionPacket {
 	type Data = Vec<u8>;
 	fn new(public_key: PublicKey, hop_data: Vec<u8>, hmac: [u8; 32]) -> Self {
-		Self {
-			version: 0,
-			public_key,
-			hop_data,
-			hmac,
-		}
+		Self { version: 0, public_key, hop_data, hmac }
 	}
 }
 
@@ -1937,18 +1963,17 @@ impl LengthReadable for TrampolineOnionPacket {
 
 		let hmac = Readable::read(r)?;
 
-		Ok(TrampolineOnionPacket {
-			version,
-			public_key,
-			hop_data,
-			hmac,
-		})
+		Ok(TrampolineOnionPacket { version, public_key, hop_data, hmac })
 	}
 }
 
 impl Debug for TrampolineOnionPacket {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		f.write_fmt(format_args!("TrampolineOnionPacket version {} with hmac {:?}", self.version, &self.hmac[..]))
+		f.write_fmt(format_args!(
+			"TrampolineOnionPacket version {} with hmac {:?}",
+			self.version,
+			&self.hmac[..]
+		))
 	}
 }
 
@@ -1963,13 +1988,23 @@ impl fmt::Display for DecodeError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match *self {
 			DecodeError::UnknownVersion => f.write_str("Unknown realm byte in Onion packet"),
-			DecodeError::UnknownRequiredFeature => f.write_str("Unknown required feature preventing decode"),
-			DecodeError::InvalidValue => f.write_str("Nonsense bytes didn't map to the type they were interpreted as"),
+			DecodeError::UnknownRequiredFeature => {
+				f.write_str("Unknown required feature preventing decode")
+			},
+			DecodeError::InvalidValue => {
+				f.write_str("Nonsense bytes didn't map to the type they were interpreted as")
+			},
 			DecodeError::ShortRead => f.write_str("Packet extended beyond the provided bytes"),
-			DecodeError::BadLengthDescriptor => f.write_str("A length descriptor in the packet didn't describe the later data correctly"),
+			DecodeError::BadLengthDescriptor => f.write_str(
+				"A length descriptor in the packet didn't describe the later data correctly",
+			),
 			DecodeError::Io(ref e) => fmt::Debug::fmt(e, f),
-			DecodeError::UnsupportedCompression => f.write_str("We don't support receiving messages with zlib-compressed fields"),
-			DecodeError::DangerousValue => f.write_str("Value would be dangerous to continue execution with"),
+			DecodeError::UnsupportedCompression => {
+				f.write_str("We don't support receiving messages with zlib-compressed fields")
+			},
+			DecodeError::DangerousValue => {
+				f.write_str("Value would be dangerous to continue execution with")
+			},
 		}
 	}
 }
@@ -2334,7 +2369,9 @@ impl_writeable_msg!(ChannelReady, {
 	(1, short_channel_id_alias, option),
 });
 
-pub(crate) fn write_features_up_to_13<W: Writer>(w: &mut W, le_flags: &[u8]) -> Result<(), io::Error> {
+pub(crate) fn write_features_up_to_13<W: Writer>(
+	w: &mut W, le_flags: &[u8],
+) -> Result<(), io::Error> {
 	let len = core::cmp::min(2, le_flags.len());
 	(len as u16).write(w)?;
 	for i in (0..len).rev() {
@@ -2432,7 +2469,8 @@ impl Readable for OpenChannel {
 		let channel_flags: u8 = Readable::read(r)?;
 
 		let mut shutdown_scriptpubkey: Option<ScriptBuf> = None;
-		let mut channel_type: Option<ChannelTypeFeatures> = None;let mut consignment_endpoint: Option<RgbTransport> = None;
+		let mut channel_type: Option<ChannelTypeFeatures> = None;
+		let mut consignment_endpoint: Option<RgbTransport> = None;
 
 		decode_tlv_stream!(r, {
 			(0, shutdown_scriptpubkey, (option, encoding: (ScriptBuf, WithoutLength))),
@@ -2458,8 +2496,8 @@ impl Readable for OpenChannel {
 				first_per_commitment_point,
 				channel_flags,
 				shutdown_scriptpubkey,
-				channel_type,consignment_endpoint,
-
+				channel_type,
+				consignment_endpoint,
 			},
 			push_msat,
 			channel_reserve_satoshis,
@@ -2522,7 +2560,8 @@ impl Readable for OpenChannelV2 {
 
 		let mut shutdown_scriptpubkey: Option<ScriptBuf> = None;
 		let mut channel_type: Option<ChannelTypeFeatures> = None;
-		let mut require_confirmed_inputs: Option<()> = None;let mut consignment_endpoint: Option<RgbTransport> = None;
+		let mut require_confirmed_inputs: Option<()> = None;
+		let mut consignment_endpoint: Option<RgbTransport> = None;
 
 		decode_tlv_stream!(r, {
 			(0, shutdown_scriptpubkey, (option, encoding: (ScriptBuf, WithoutLength))),
@@ -2549,8 +2588,8 @@ impl Readable for OpenChannelV2 {
 				first_per_commitment_point,
 				channel_flags,
 				shutdown_scriptpubkey,
-				channel_type,consignment_endpoint,
-
+				channel_type,
+				consignment_endpoint,
 			},
 			funding_feerate_sat_per_1000_weight,
 			locktime,
@@ -2561,25 +2600,25 @@ impl Readable for OpenChannelV2 {
 }
 
 impl Readable for RgbTransport {
-  fn read<R: Read>(r: &mut R) -> Result<Self, DecodeError> {
-    let sz: usize = <u16 as Readable>::read(r)? as usize;
-    let mut consignment_endpoint_str_vec = Vec::with_capacity(sz);
-    consignment_endpoint_str_vec.resize(sz, 0);
-    r.read_exact(&mut consignment_endpoint_str_vec)?;
-    match String::from_utf8(consignment_endpoint_str_vec) {
-      Ok(s) => return Ok(RgbTransport::from_str(&s).unwrap()),
-      Err(_) => return Err(DecodeError::InvalidValue),
-    }
-  }
+	fn read<R: Read>(r: &mut R) -> Result<Self, DecodeError> {
+		let sz: usize = <u16 as Readable>::read(r)? as usize;
+		let mut consignment_endpoint_str_vec = Vec::with_capacity(sz);
+		consignment_endpoint_str_vec.resize(sz, 0);
+		r.read_exact(&mut consignment_endpoint_str_vec)?;
+		match String::from_utf8(consignment_endpoint_str_vec) {
+			Ok(s) => return Ok(RgbTransport::from_str(&s).unwrap()),
+			Err(_) => return Err(DecodeError::InvalidValue),
+		}
+	}
 }
 
-Writeable for RgbTransport {
-  fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
-    let consignment_endpoint_str = format!("{self}");
-    (consignment_endpoint_str.len() as u16).write(w)?;
-    w.write_all(consignment_endpoint_str.as_bytes())?;
-    Ok(())
-  }
+impl Writeable for RgbTransport {
+	fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
+		let consignment_endpoint_str = format!("{self}");
+		(consignment_endpoint_str.len() as u16).write(w)?;
+		w.write_all(consignment_endpoint_str.as_bytes())?;
+		Ok(())
+	}
 }
 #[cfg(not(taproot))]
 impl_writeable_msg!(RevokeAndACK, {
@@ -2629,9 +2668,7 @@ impl_writeable_msg!(UpdateFulfillHTLC, {
 // Note that this is written as a part of ChannelManager objects, and thus cannot change its
 // serialization format in a way which assumes we know the total serialized length/message end
 // position.
-impl_writeable!(OnionErrorPacket, {
-	data
-});
+impl_writeable!(OnionErrorPacket, { data });
 
 // Note that this is written as a part of ChannelManager objects, and thus cannot change its
 // serialization format in a way which assumes we know the total serialized length/message end
@@ -2641,7 +2678,7 @@ impl Writeable for OnionPacket {
 		self.version.write(w)?;
 		match self.public_key {
 			Ok(pubkey) => pubkey.write(w)?,
-			Err(_) => [0u8;33].write(w)?,
+			Err(_) => [0u8; 33].write(w)?,
 		}
 		w.write_all(&self.hop_data)?;
 		self.hmac.write(w)?;
@@ -2654,7 +2691,7 @@ impl Readable for OnionPacket {
 		Ok(OnionPacket {
 			version: Readable::read(r)?,
 			public_key: {
-				let mut buf = [0u8;33];
+				let mut buf = [0u8; 33];
 				r.read_exact(&mut buf)?;
 				PublicKey::from_slice(&buf)
 			},
@@ -2684,10 +2721,7 @@ impl Readable for OnionMessage {
 		let mut packet_reader = FixedLengthReader::new(r, len as u64);
 		let onion_routing_packet: onion_message::packet::Packet =
 			<onion_message::packet::Packet as LengthReadable>::read(&mut packet_reader)?;
-		Ok(Self {
-			blinding_point,
-			onion_routing_packet,
-		})
+		Ok(Self { blinding_point, onion_routing_packet })
 	}
 }
 
@@ -2719,8 +2753,12 @@ impl Readable for FinalOnionHopData {
 impl<'a> Writeable for OutboundOnionPayload<'a> {
 	fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
 		match self {
-			Self::Forward { short_channel_id, amt_to_forward, outgoing_cltv_value, rgb_amount_to_forward
- } => {
+			Self::Forward {
+				short_channel_id,
+				amt_to_forward,
+				outgoing_cltv_value,
+				rgb_amount_to_forward,
+			} => {
 				_encode_varint_length_prefixed_tlv!(w, {
 					(2, HighZeroBytesDroppedBigSize(*amt_to_forward), required),
 					(4, HighZeroBytesDroppedBigSize(*outgoing_cltv_value), required),
@@ -2729,8 +2767,10 @@ impl<'a> Writeable for OutboundOnionPayload<'a> {
 				});
 			},
 			Self::TrampolineEntrypoint {
-				amt_to_forward, outgoing_cltv_value, ref multipath_trampoline_data,
-				ref trampoline_packet
+				amt_to_forward,
+				outgoing_cltv_value,
+				ref multipath_trampoline_data,
+				ref trampoline_packet,
 			} => {
 				_encode_varint_length_prefixed_tlv!(w, {
 					(2, HighZeroBytesDroppedBigSize(*amt_to_forward), required),
@@ -2740,15 +2780,20 @@ impl<'a> Writeable for OutboundOnionPayload<'a> {
 				});
 			},
 			Self::Receive {
-				ref payment_data, ref payment_metadata, ref keysend_preimage, sender_intended_htlc_amt_msat,
-				cltv_expiry_height, ref custom_tlvs, rgb_amount_to_forward
-,
+				ref payment_data,
+				ref payment_metadata,
+				ref keysend_preimage,
+				sender_intended_htlc_amt_msat,
+				cltv_expiry_height,
+				ref custom_tlvs,
+				rgb_amount_to_forward,
 			} => {
 				// We need to update [`ln::outbound_payment::RecipientOnionFields::with_custom_tlvs`]
 				// to reject any reserved types in the experimental range if new ones are ever
 				// standardized.
 				let keysend_tlv = keysend_preimage.map(|preimage| (5482373484, preimage.encode()));
-				let mut custom_tlvs: Vec<&(u64, Vec<u8>)> = custom_tlvs.iter().chain(keysend_tlv.iter()).collect();
+				let mut custom_tlvs: Vec<&(u64, Vec<u8>)> =
+					custom_tlvs.iter().chain(keysend_tlv.iter()).collect();
 				custom_tlvs.sort_unstable_by_key(|(typ, _)| *typ);
 				_encode_varint_length_prefixed_tlv!(w, {
 					(2, HighZeroBytesDroppedBigSize(*sender_intended_htlc_amt_msat), required),
@@ -2758,8 +2803,11 @@ impl<'a> Writeable for OutboundOnionPayload<'a> {
 
 				}, custom_tlvs.iter());
 			},
-			Self::BlindedForward { encrypted_tlvs, intro_node_blinding_point, rgb_amount_to_forward
- } => {
+			Self::BlindedForward {
+				encrypted_tlvs,
+				intro_node_blinding_point,
+				rgb_amount_to_forward,
+			} => {
 				_encode_varint_length_prefixed_tlv!(w, {
 					(10, **encrypted_tlvs, required_vec),
 					(12, intro_node_blinding_point, option),(20, rgb_amount_to_forward, option)
@@ -2767,15 +2815,21 @@ impl<'a> Writeable for OutboundOnionPayload<'a> {
 				});
 			},
 			Self::BlindedReceive {
-				sender_intended_htlc_amt_msat, total_msat, cltv_expiry_height, encrypted_tlvs,
-				intro_node_blinding_point, keysend_preimage, ref custom_tlvs, rgb_amount_to_forward
-,
+				sender_intended_htlc_amt_msat,
+				total_msat,
+				cltv_expiry_height,
+				encrypted_tlvs,
+				intro_node_blinding_point,
+				keysend_preimage,
+				ref custom_tlvs,
+				rgb_amount_to_forward,
 			} => {
 				// We need to update [`ln::outbound_payment::RecipientOnionFields::with_custom_tlvs`]
 				// to reject any reserved types in the experimental range if new ones are ever
 				// standardized.
 				let keysend_tlv = keysend_preimage.map(|preimage| (5482373484, preimage.encode()));
-				let mut custom_tlvs: Vec<&(u64, Vec<u8>)> = custom_tlvs.iter().chain(keysend_tlv.iter()).collect();
+				let mut custom_tlvs: Vec<&(u64, Vec<u8>)> =
+					custom_tlvs.iter().chain(keysend_tlv.iter()).collect();
 				custom_tlvs.sort_unstable_by_key(|(typ, _)| *typ);
 				_encode_varint_length_prefixed_tlv!(w, {
 					(2, HighZeroBytesDroppedBigSize(*sender_intended_htlc_amt_msat), required),
@@ -2800,14 +2854,16 @@ impl Writeable for OutboundTrampolinePayload {
 					(4, HighZeroBytesDroppedBigSize(*outgoing_cltv_value), required),
 					(14, outgoing_node_id, required)
 				});
-			}
+			},
 		}
 		Ok(())
 	}
 }
 
-
-impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload where NS::Target: NodeSigner {
+impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload
+where
+	NS::Target: NodeSigner,
+{
 	fn read<R: Read>(r: &mut R, args: (Option<PublicKey>, NS)) -> Result<Self, DecodeError> {
 		let (update_add_blinding_point, node_signer) = args;
 
@@ -2819,7 +2875,8 @@ impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload wh
 		let mut intro_node_blinding_point = None;
 		let mut payment_metadata: Option<WithoutLength<Vec<u8>>> = None;
 		let mut total_msat = None;
-		let mut keysend_preimage: Option<PaymentPreimage> = None;let mut rgb_amount_to_forward: Option<u64> = None;
+		let mut keysend_preimage: Option<PaymentPreimage> = None;
+		let mut rgb_amount_to_forward: Option<u64> = None;
 
 		let mut custom_tlvs = Vec::new();
 
@@ -2845,31 +2902,43 @@ impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload wh
 			Ok(true)
 		});
 
-		if amt.unwrap_or(0) > MAX_VALUE_MSAT { return Err(DecodeError::InvalidValue) }
+		if amt.unwrap_or(0) > MAX_VALUE_MSAT {
+			return Err(DecodeError::InvalidValue);
+		}
 		if intro_node_blinding_point.is_some() && update_add_blinding_point.is_some() {
-			return Err(DecodeError::InvalidValue)
+			return Err(DecodeError::InvalidValue);
 		}
 
 		if let Some(blinding_point) = intro_node_blinding_point.or(update_add_blinding_point) {
 			if short_id.is_some() || payment_data.is_some() || payment_metadata.is_some() {
-				return Err(DecodeError::InvalidValue)
+				return Err(DecodeError::InvalidValue);
 			}
 			let enc_tlvs = encrypted_tlvs_opt.ok_or(DecodeError::InvalidValue)?.0;
-			let enc_tlvs_ss = node_signer.ecdh(Recipient::Node, &blinding_point, None)
+			let enc_tlvs_ss = node_signer
+				.ecdh(Recipient::Node, &blinding_point, None)
 				.map_err(|_| DecodeError::InvalidValue)?;
 			let rho = onion_utils::gen_rho_from_shared_secret(&enc_tlvs_ss.secret_bytes());
 			let mut s = Cursor::new(&enc_tlvs);
 			let mut reader = FixedLengthReader::new(&mut s, enc_tlvs.len() as u64);
 			match ChaChaPolyReadAdapter::read(&mut reader, rho)? {
-				ChaChaPolyReadAdapter { readable: BlindedPaymentTlvs::Forward(ForwardTlvs {
-					short_channel_id, payment_relay, payment_constraints, features, next_blinding_override
-				})} => {
-					if amt.is_some() || cltv_value.is_some() || total_msat.is_some() ||
-						keysend_preimage.is_some()
+				ChaChaPolyReadAdapter {
+					readable:
+						BlindedPaymentTlvs::Forward(ForwardTlvs {
+							short_channel_id,
+							payment_relay,
+							payment_constraints,
+							features,
+							next_blinding_override,
+						}),
+				} => {
+					if amt.is_some()
+						|| cltv_value.is_some() || total_msat.is_some()
+						|| keysend_preimage.is_some()
 					{
-						return Err(DecodeError::InvalidValue)
+						return Err(DecodeError::InvalidValue);
 					}
-					Ok(Self::BlindedForward {rgb_amount_to_forward,
+					Ok(Self::BlindedForward {
+						rgb_amount_to_forward,
 
 						short_channel_id,
 						payment_relay,
@@ -2879,10 +2948,17 @@ impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload wh
 						next_blinding_override,
 					})
 				},
-				ChaChaPolyReadAdapter { readable: BlindedPaymentTlvs::Receive(ReceiveTlvs {
-					payment_secret, payment_constraints, payment_context
-				})} => {
-					if total_msat.unwrap_or(0) > MAX_VALUE_MSAT { return Err(DecodeError::InvalidValue) }
+				ChaChaPolyReadAdapter {
+					readable:
+						BlindedPaymentTlvs::Receive(ReceiveTlvs {
+							payment_secret,
+							payment_constraints,
+							payment_context,
+						}),
+				} => {
+					if total_msat.unwrap_or(0) > MAX_VALUE_MSAT {
+						return Err(DecodeError::InvalidValue);
+					}
 					Ok(Self::BlindedReceive {
 						sender_intended_htlc_amt_msat: amt.ok_or(DecodeError::InvalidValue)?,
 						total_msat: total_msat.ok_or(DecodeError::InvalidValue)?,
@@ -2892,24 +2968,28 @@ impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload wh
 						payment_context,
 						intro_node_blinding_point,
 						keysend_preimage,
-						custom_tlvs,rgb_amount_to_forward,
-
+						custom_tlvs,
+						rgb_amount_to_forward,
 					})
 				},
 			}
 		} else if let Some(short_channel_id) = short_id {
-			if payment_data.is_some() || payment_metadata.is_some() || encrypted_tlvs_opt.is_some() ||
-				total_msat.is_some()
-			{ return Err(DecodeError::InvalidValue) }
+			if payment_data.is_some()
+				|| payment_metadata.is_some()
+				|| encrypted_tlvs_opt.is_some()
+				|| total_msat.is_some()
+			{
+				return Err(DecodeError::InvalidValue);
+			}
 			Ok(Self::Forward {
 				short_channel_id,
 				amt_to_forward: amt.ok_or(DecodeError::InvalidValue)?,
-				outgoing_cltv_value: cltv_value.ok_or(DecodeError::InvalidValue)?,rgb_amount_to_forward,
-
+				outgoing_cltv_value: cltv_value.ok_or(DecodeError::InvalidValue)?,
+				rgb_amount_to_forward,
 			})
 		} else {
 			if encrypted_tlvs_opt.is_some() || total_msat.is_some() {
-				return Err(DecodeError::InvalidValue)
+				return Err(DecodeError::InvalidValue);
 			}
 			if let Some(data) = &payment_data {
 				if data.total_msat > MAX_VALUE_MSAT {
@@ -2922,8 +3002,8 @@ impl<NS: Deref> ReadableArgs<(Option<PublicKey>, NS)> for InboundOnionPayload wh
 				keysend_preimage,
 				sender_intended_htlc_amt_msat: amt.ok_or(DecodeError::InvalidValue)?,
 				cltv_expiry_height: cltv_value.ok_or(DecodeError::InvalidValue)?,
-				custom_tlvs,rgb_amount_to_forward,
-
+				custom_tlvs,
+				rgb_amount_to_forward,
 			})
 		}
 	}
@@ -2945,7 +3025,7 @@ impl Readable for Ping {
 				let byteslen = Readable::read(r)?;
 				r.read_exact(&mut vec![0u8; byteslen as usize][..])?;
 				byteslen
-			}
+			},
 		})
 	}
 }
@@ -2964,7 +3044,7 @@ impl Readable for Pong {
 				let byteslen = Readable::read(r)?;
 				r.read_exact(&mut vec![0u8; byteslen as usize][..])?;
 				byteslen
-			}
+			},
 		})
 	}
 }
@@ -2977,7 +3057,8 @@ impl Writeable for UnsignedChannelAnnouncement {
 		self.node_id_1.write(w)?;
 		self.node_id_2.write(w)?;
 		self.bitcoin_key_1.write(w)?;
-		self.bitcoin_key_2.write(w)?;self.contract_id.write(w)?;
+		self.bitcoin_key_2.write(w)?;
+		self.contract_id.write(w)?;
 
 		w.write_all(&self.excess_data[..])?;
 		Ok(())
@@ -2985,17 +3066,17 @@ impl Writeable for UnsignedChannelAnnouncement {
 }
 
 impl Readable for ContractId {
-  fn read<R: Read>(r: &mut R) -> Result<Self, DecodeError> {
-    let buf: [u8; 32] = Readable::read(r)?;
-    let contract_id = ContractId::copy_from_slice(buf).unwrap();
-    Ok(contract_id)
-  }
+	fn read<R: Read>(r: &mut R) -> Result<Self, DecodeError> {
+		let buf: [u8; 32] = Readable::read(r)?;
+		let contract_id = ContractId::copy_from_slice(buf).unwrap();
+		Ok(contract_id)
+	}
 }
 
-Writeable for ContractId {
-  fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
-    w.write_all(&self[..])
-  }
+impl Writeable for ContractId {
+	fn write<W: Writer>(&self, w: &mut W) -> Result<(), io::Error> {
+		w.write_all(&self[..])
+	}
 }
 impl Readable for UnsignedChannelAnnouncement {
 	fn read<R: Read>(r: &mut R) -> Result<Self, DecodeError> {
@@ -3006,7 +3087,8 @@ impl Readable for UnsignedChannelAnnouncement {
 			node_id_1: Readable::read(r)?,
 			node_id_2: Readable::read(r)?,
 			bitcoin_key_1: Readable::read(r)?,
-			bitcoin_key_2: Readable::read(r)?,contract_id: Readable::read(r)?,
+			bitcoin_key_2: Readable::read(r)?,
+			contract_id: Readable::read(r)?,
 
 			excess_data: read_to_end(r)?,
 		})
@@ -3034,7 +3116,8 @@ impl Writeable for UnsignedChannelUpdate {
 		self.htlc_minimum_msat.write(w)?;
 		self.fee_base_msat.write(w)?;
 		self.fee_proportional_millionths.write(w)?;
-		self.htlc_maximum_msat.write(w)?;self.htlc_maximum_rgb.write(w)?;
+		self.htlc_maximum_msat.write(w)?;
+		self.htlc_maximum_rgb.write(w)?;
 
 		w.write_all(&self.excess_data[..])?;
 		Ok(())
@@ -3053,7 +3136,8 @@ impl Readable for UnsignedChannelUpdate {
 			htlc_minimum_msat: Readable::read(r)?,
 			fee_base_msat: Readable::read(r)?,
 			fee_proportional_millionths: Readable::read(r)?,
-			htlc_maximum_msat: Readable::read(r)?,htlc_maximum_rgb: Readable::read(r)?,
+			htlc_maximum_msat: Readable::read(r)?,
+			htlc_maximum_rgb: Readable::read(r)?,
 
 			excess_data: read_to_end(r)?,
 		};
@@ -3094,7 +3178,7 @@ impl Readable for ErrorMessage {
 					Ok(s) => s,
 					Err(_) => return Err(DecodeError::InvalidValue),
 				}
-			}
+			},
 		})
 	}
 }
@@ -3121,7 +3205,7 @@ impl Readable for WarningMessage {
 					Ok(s) => s,
 					Err(_) => return Err(DecodeError::InvalidValue),
 				}
-			}
+			},
 		})
 	}
 }
@@ -3163,7 +3247,9 @@ impl Readable for UnsignedNodeAnnouncement {
 		let mut excess = false;
 		let mut excess_byte = 0;
 		loop {
-			if addr_len <= addr_readpos { break; }
+			if addr_len <= addr_readpos {
+				break;
+			}
 			match Readable::read(r) {
 				Ok(Ok(addr)) => {
 					if addr_len < addr_readpos + 1 + addr.len() {
@@ -3236,16 +3322,13 @@ impl Readable for QueryShortChannelIds {
 
 		// Read short_channel_ids (8-bytes each), for the u16 encoding_len
 		// less the 1-byte encoding_type
-		let short_channel_id_count: u16 = (encoding_len - 1)/8;
+		let short_channel_id_count: u16 = (encoding_len - 1) / 8;
 		let mut short_channel_ids = Vec::with_capacity(short_channel_id_count as usize);
 		for _ in 0..short_channel_id_count {
 			short_channel_ids.push(Readable::read(r)?);
 		}
 
-		Ok(QueryShortChannelIds {
-			chain_hash,
-			short_channel_ids,
-		})
+		Ok(QueryShortChannelIds { chain_hash, short_channel_ids })
 	}
 }
 
@@ -3315,7 +3398,7 @@ impl Readable for ReplyChannelRange {
 
 		// Read short_channel_ids (8-bytes each), for the u16 encoding_len
 		// less the 1-byte encoding_type
-		let short_channel_id_count: u16 = (encoding_len - 1)/8;
+		let short_channel_id_count: u16 = (encoding_len - 1) / 8;
 		let mut short_channel_ids = Vec::with_capacity(short_channel_id_count as usize);
 		for _ in 0..short_channel_id_count {
 			short_channel_ids.push(Readable::read(r)?);
@@ -3326,7 +3409,7 @@ impl Readable for ReplyChannelRange {
 			first_blocknum,
 			number_of_blocks,
 			sync_complete,
-			short_channel_ids
+			short_channel_ids,
 		})
 	}
 }
@@ -3354,5 +3437,3 @@ impl_writeable_msg!(GossipTimestampFilter, {
 	first_timestamp,
 	timestamp_range,
 }, {});
-
-

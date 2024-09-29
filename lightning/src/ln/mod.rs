@@ -19,22 +19,22 @@
 #[macro_use]
 pub mod functional_test_utils;
 
-pub mod onion_payment;
-pub mod channelmanager;
+pub mod chan_utils;
 pub mod channel_keys;
 pub mod channel_state;
+pub mod channelmanager;
+pub mod features;
 pub mod inbound_payment;
 pub mod msgs;
+pub mod onion_payment;
 pub mod peer_handler;
-pub mod chan_utils;
-pub mod features;
 pub mod script;
 pub mod types;
 
 // TODO: These modules were moved from lightning-invoice and need to be better integrated into this
 // crate now:
-pub mod invoice_utils;
 pub mod bolt11_payment;
+pub mod invoice_utils;
 
 pub use lightning_types::payment::{PaymentHash, PaymentPreimage, PaymentSecret};
 
@@ -57,15 +57,32 @@ pub use onion_utils::create_payment_onion;
 // without the node parameter being mut. This is incorrect, and thus newer rustcs will complain
 // about an unnecessary mut. Thus, we silence the unused_mut warning in two test modules below.
 
+#[cfg(all(test, async_signing))]
+#[allow(unused_mut)]
+mod async_signer_tests;
 #[cfg(test)]
 #[allow(unused_mut)]
 mod blinded_payment_tests;
 #[cfg(test)]
 #[allow(unused_mut)]
+mod chanmon_update_fail_tests;
+#[cfg(test)]
+#[allow(unused_mut)]
 mod functional_tests;
+#[allow(dead_code)] // TODO(dual_funding): Exchange for dual_funding cfg
+pub(crate) mod interactivetxs;
 #[cfg(test)]
 #[allow(unused_mut)]
 mod max_payment_path_len_tests;
+#[cfg(test)]
+#[allow(unused_mut)]
+mod monitor_tests;
+#[cfg(test)]
+#[allow(unused_mut)]
+mod offers_tests;
+#[cfg(test)]
+#[allow(unused_mut)]
+mod onion_route_tests;
 #[cfg(test)]
 #[allow(unused_mut)]
 mod payment_tests;
@@ -74,29 +91,12 @@ mod payment_tests;
 mod priv_short_conf_tests;
 #[cfg(test)]
 #[allow(unused_mut)]
-mod chanmon_update_fail_tests;
+mod reload_tests;
 #[cfg(test)]
 #[allow(unused_mut)]
 mod reorg_tests;
 #[cfg(test)]
 #[allow(unused_mut)]
-mod reload_tests;
-#[cfg(test)]
-#[allow(unused_mut)]
-mod onion_route_tests;
-#[cfg(test)]
-#[allow(unused_mut)]
-mod monitor_tests;
-#[cfg(test)]
-#[allow(unused_mut)]
 mod shutdown_tests;
-#[cfg(all(test, async_signing))]
-#[allow(unused_mut)]
-mod async_signer_tests;
-#[cfg(test)]
-#[allow(unused_mut)]
-mod offers_tests;
-#[allow(dead_code)] // TODO(dual_funding): Exchange for dual_funding cfg
-pub(crate) mod interactivetxs;
 
 pub use self::peer_channel_encryptor::LN_MAX_MSG_LEN;
