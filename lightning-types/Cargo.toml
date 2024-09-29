@@ -21,5 +21,5 @@ bitcoin = { version = "0.32.2", default-features = false }
 hex-conservative = { version = "0.2", default-features = false }
 bech32 = { version = "0.9", default-features = false }
 
-[lints]
-workspace = true
+# [lints]
+# workspace = true

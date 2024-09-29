@@ -20,5 +20,5 @@ getrandom = { version = "0.2", optional = true, default-features = false }
 [target.'cfg(not(any(target_os = "unknown", target_os = "none")))'.dependencies]
 getrandom = { version = "0.2", default-features = false }
 
-[lints]
-workspace = true
+# [lints]
+# workspace = true

@@ -30,5 +30,5 @@ lightning = { version = "0.0.124", path = "../lightning", features = ["_test_uti
 lightning-invoice = { version = "0.32.0", path = "../lightning-invoice" }
 lightning-persister = { version = "0.0.124", path = "../lightning-persister" }
 
-[lints]
-workspace = true
+# [lints]
+# workspace = true

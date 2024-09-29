@@ -37,5 +37,5 @@ tokio = { version = "1.35.0", features = ["full"] }
 [target.'cfg(not(target_os = "windows"))'.dev-dependencies]
 electrsd = { version = "0.28.0", default-features = false, features = ["legacy"] }
 
-[lints]
-workspace = true
+# [lints]
+# workspace = true
