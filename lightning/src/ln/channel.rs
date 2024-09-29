@@ -1878,7 +1878,9 @@ ldk_data_dir,
 		holder_selected_channel_reserve_satoshis: u64,
 		channel_keys_id: [u8; 32],
 		holder_signer: <SP::Target as SignerProvider>::EcdsaSigner,
-		pubkeys: ChannelPublicKeys,
+		pubkeys: ChannelPublicKeys,consignment_endpoint: Option<RgbTransport>,
+ldk_data_dir: PathBuf,
+
 		_logger: L,
 	) -> Result<ChannelContext<SP>, APIError>
 		where
@@ -8282,7 +8284,11 @@ ldk_data_dir,
 		let funding_script = self.context.get_funding_redeemscript();
 
 		let keys = self.context.build_holder_transaction_keys();
-		let initial_commitment_tx = self.context.build_commitment_transaction(self.context.holder_commitment_point.transaction_number(), &keys, true, false, logger).tx;
+		let mut initial_commitment_tx = self.context.build_commitment_transaction(self.context.holder_commitment_point.transaction_number(), &keys, true, false, logger).tx;
+if self.context.is_colored() {
+  color_commitment(&self.context, &mut initial_commitment_tx, false)?;
+}
+
 		let trusted_tx = initial_commitment_tx.trust();
 		let initial_commitment_bitcoin_tx = trusted_tx.built_transaction();
 		let sighash = initial_commitment_bitcoin_tx.get_sighash_all(&funding_script, self.context.channel_value_satoshis);

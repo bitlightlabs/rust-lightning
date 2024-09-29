@@ -186,7 +186,8 @@ pub const COMMITMENT_TX_WEIGHT_PER_HTLC: u64 = 172;
 pub(crate) fn commitment_tx_base_weight(channel_type_features: &ChannelTypeFeatures) -> u64 {
 	const COMMITMENT_TX_BASE_WEIGHT: u64 = 724;
 	const COMMITMENT_TX_BASE_ANCHOR_WEIGHT: u64 = 1124;
-	if channel_type_features.supports_anchors_zero_fee_htlc_tx() { COMMITMENT_TX_BASE_ANCHOR_WEIGHT } else { COMMITMENT_TX_BASE_WEIGHT }
+	172 + if channel_type_features.supports_anchors_zero_fee_htlc_tx() { COMMITMENT_TX_BASE_ANCHOR_WEIGHT } else { COMMITMENT_TX_BASE_WEIGHT }
+
 }
 
 /// Get the fee cost of a commitment tx with a given number of HTLC outputs.

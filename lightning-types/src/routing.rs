@@ -46,5 +46,7 @@ pub struct RouteHintHop {
 	/// The minimum value, in msat, which must be relayed to the next hop.
 	pub htlc_minimum_msat: Option<u64>,
 	/// The maximum value in msat available for routing with a single HTLC.
-	pub htlc_maximum_msat: Option<u64>,
+	pub htlc_maximum_msat: Option<u64>,/// The maximum RGB value available for routing with a single HTLC.
+  pub htlc_maximum_rgb: Option<u64>,
+
 }

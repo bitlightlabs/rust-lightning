@@ -465,7 +465,12 @@ pub struct ChannelDetails {
 	/// Pending outbound HTLCs.
 	///
 	/// This field is empty for objects serialized with LDK versions prior to 0.0.122.
-	pub pending_outbound_htlcs: Vec<OutboundHTLCDetails>,
+	pub pending_outbound_htlcs: Vec<OutboundHTLCDetails>,/// The available outbound RGB capacity for sending a single HTLC to the remote peer.
+pub next_outbound_htlc_limit_rgb: u64,
+
+/// The largest RGB value HTLC we currently will accept, for this channel.
+pub inbound_htlc_maximum_rgb: u64,
+
 }
 
 impl ChannelDetails {

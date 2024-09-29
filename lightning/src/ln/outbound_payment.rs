@@ -839,7 +839,8 @@ impl OutboundPayments {
 		let amount_msat = invoice.amount_msats();let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();    let rgb_payment = is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {      filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)    });
 
 		let mut route_params = RouteParameters::from_payment_params_and_value(
-			payment_params, amount_msat
+			payment_params, amount_msat, rgb_payment
+
 		);
 
 		if let Some(max_fee_msat) = max_total_routing_fee_msat {

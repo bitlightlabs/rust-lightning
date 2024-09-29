@@ -7595,7 +7595,10 @@ payment_hash,
 		let peer_state = &mut *peer_state_lock;
 		let (mut chan, funding_msg_opt, monitor) =
 			match peer_state.channel_by_id.remove(&msg.temporary_channel_id) {
-				Some(ChannelPhase::UnfundedInboundV1(inbound_chan)) => {
+				Some(ChannelPhase::UnfundedInboundV1(inbound_chan)) => {if let Some(consignment_endpoint) = &inbound_chan.context.consignment_endpoint {
+  handle_funding(&msg.temporary_channel_id, msg.funding_txid.to_string(), &self.ldk_data_dir, consignment_endpoint.clone())?;
+}
+
 					let logger = WithChannelContext::from(&self.logger, &inbound_chan.context, None);
 					match inbound_chan.funding_created(msg, best_block, &self.signer_provider, &&logger) {
 						Ok(res) => res,

@@ -23,7 +23,13 @@ use hex_conservative::display::impl_fmt_traits;
 ///
 /// This is not exported to bindings users as we just use [u8; 32] directly
 #[derive(Hash, Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
-pub struct PaymentHash(pub [u8; 32]);
+pub struct PaymentHash(pub [u8; 32]);impl PaymentHash {
+  /// Create a payment hash consisting of all-zeros data (e.g. when uninitialized or a placeholder).
+  pub fn new_zero() -> Self {
+    Self([0; 32])
+  }
+}
+
 
 impl Borrow<[u8]> for PaymentHash {
 	fn borrow(&self) -> &[u8] {

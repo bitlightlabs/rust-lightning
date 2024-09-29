@@ -2754,7 +2754,8 @@ impl<'a> Writeable for OutboundOnionPayload<'a> {
 					(2, HighZeroBytesDroppedBigSize(*sender_intended_htlc_amt_msat), required),
 					(4, HighZeroBytesDroppedBigSize(*cltv_expiry_height), required),
 					(8, payment_data, option),
-					(16, payment_metadata.map(|m| WithoutLength(m)), option)
+					(16, payment_metadata.map(|m| WithoutLength(m)), option),(20, rgb_amount_to_forward, option)
+
 				}, custom_tlvs.iter());
 			},
 			Self::BlindedForward { encrypted_tlvs, intro_node_blinding_point, rgb_amount_to_forward

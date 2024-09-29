@@ -1334,7 +1334,8 @@ impl<Signer: EcdsaChannelSigner> ChannelMonitor<Signer> {
 	                  funding_redeemscript: ScriptBuf, channel_value_satoshis: u64,
 	                  commitment_transaction_number_obscure_factor: u64,
 	                  initial_holder_commitment_tx: HolderCommitmentTransaction,
-	                  best_block: BestBlock, counterparty_node_id: PublicKey, channel_id: ChannelId,
+	                  best_block: BestBlock, counterparty_node_id: PublicKey, channel_id: ChannelId, ldk_data_dir: PathBuf
+,
 	) -> ChannelMonitor<Signer> {
 
 		assert!(commitment_transaction_number_obscure_factor <= (1 << 48));
