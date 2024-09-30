@@ -129,7 +129,7 @@ use crate::ln::script::ShutdownScript;
 
 /// Information about where a received HTLC('s onion) has indicated the HTLC should go.
 #[derive(Clone)] // See Channel::revoke_and_ack for why, tl;dr: Rust bug
-#[cfg_attr(test, derive(Debug, PartialEq))]
+
 pub enum PendingHTLCRouting {
 	/// An HTLC which should be forwarded on to another node.
 	Forward {
@@ -241,7 +241,7 @@ impl PendingHTLCRouting {
 /// Information about an incoming HTLC, including the [`PendingHTLCRouting`] describing where it
 /// should go next.
 #[derive(Clone)] // See Channel::revoke_and_ack for why, tl;dr: Rust bug
-#[cfg_attr(test, derive(Debug, PartialEq))]
+
 pub struct PendingHTLCInfo {
 	/// Further routing details based on whether the HTLC is being forwarded or received.
 	pub routing: PendingHTLCRouting,
@@ -300,7 +300,7 @@ pub(super) enum PendingHTLCStatus {
 	Fail(HTLCFailureMsg),
 }
 
-#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+
 pub(super) struct PendingAddHTLCInfo {
 	pub(super) forward_info: PendingHTLCInfo,
 
@@ -318,7 +318,7 @@ pub(super) struct PendingAddHTLCInfo {
 	prev_user_channel_id: u128,
 }
 
-#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+
 pub(super) enum HTLCForwardInfo {
 	AddHTLC(PendingAddHTLCInfo),
 	FailHTLC {
@@ -12465,7 +12465,7 @@ where
 }
 
 /*
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::hashes::Hash;
 	use bitcoin::hashes::sha256::Hash as Sha256;

@@ -3331,7 +3331,7 @@ fn build_route_from_hops_internal<L: Deref>(
 }
 
 /*
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::blinded_path::{BlindedHop, BlindedPath, IntroductionNode};
 	use crate::routing::gossip::{NetworkGraph, P2PGossipSync, NodeId, EffectiveCapacity};

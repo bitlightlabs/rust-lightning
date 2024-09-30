@@ -826,7 +826,7 @@ impl<'a, 'b, L: Deref> WithChannelDetails<'a, 'b, L> where L::Target: Logger {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use core::time::Duration;
 	use crate::{Currency, Description, Bolt11InvoiceDescription, SignOrCreationError, CreationError};

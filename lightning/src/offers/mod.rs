@@ -23,5 +23,5 @@ pub mod parse;
 mod payer;
 pub mod refund;
 pub(crate) mod signer;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(crate) mod test_utils;

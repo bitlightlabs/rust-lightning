@@ -13,6 +13,7 @@ Utility to process gossip routing data from Rapid Gossip Sync Server.
 default = ["std"]
 no-std = ["lightning/no-std"]
 std = ["lightning/std"]
+test_force_enabled = []
 
 [dependencies]
 lightning = { version = "0.0.123", path = "../lightning", default-features = false }

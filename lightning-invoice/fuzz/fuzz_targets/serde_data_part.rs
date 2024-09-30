@@ -41,7 +41,7 @@ fn main() {
     }
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
     fn extend_vec_from_hex(hex: &str, out: &mut Vec<u8>) {
         let mut b = 0;

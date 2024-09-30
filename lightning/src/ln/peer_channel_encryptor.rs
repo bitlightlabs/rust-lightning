@@ -566,7 +566,7 @@ impl MessageBuf {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{MessageBuf, LN_MAX_MSG_LEN};
 

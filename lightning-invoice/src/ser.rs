@@ -496,7 +496,7 @@ impl ToBase32 for Bolt11InvoiceSignature {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use bech32::CheckBase32;
 

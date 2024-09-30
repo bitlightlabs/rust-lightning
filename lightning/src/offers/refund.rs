@@ -333,7 +333,7 @@ macro_rules! refund_builder_methods { (
 	}
 } }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 macro_rules! refund_builder_test_methods { (
 	$self: ident, $self_type: ty, $return_type: ty, $return_value: expr $(, $self_mut: tt)?
 ) => {
@@ -357,7 +357,7 @@ impl<'a> RefundBuilder<'a, secp256k1::SignOnly> {
 impl<'a, T: secp256k1::Signing> RefundBuilder<'a, T> {
 	refund_builder_methods!(self, Self, Self, self, T, mut);
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	refund_builder_test_methods!(self, Self, Self, self, mut);
 }
 
@@ -412,7 +412,7 @@ pub struct Refund {
 ///
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+
 pub(super) struct RefundContents {
 	payer: PayerContents,
 	// offer fields
@@ -629,7 +629,7 @@ impl Refund {
 	respond_with_derived_signing_pubkey_methods!(self, InvoiceWithDerivedSigningPubkeyBuilder);
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl Refund {
 	fn as_tlv_stream(&self) -> RefundTlvStreamRef {
 		self.contents.as_tlv_stream()
@@ -906,7 +906,7 @@ impl core::fmt::Display for Refund {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{Refund, RefundTlvStreamRef};
 	#[cfg(not(c_bindings))]

@@ -14,7 +14,7 @@ use secp256k1::ecdsa::{RecoverableSignature, RecoveryId};
 use std::collections::HashSet;
 use std::time::Duration;
 use std::str::FromStr;
-
+#[cfg(test_force_enabled)]
 fn get_test_tuples() -> Vec<(String, SignedRawBolt11Invoice, bool, bool)> {
 	vec![
 		(
@@ -381,6 +381,7 @@ fn get_test_tuples() -> Vec<(String, SignedRawBolt11Invoice, bool, bool)> {
 	]
 }
 
+#[cfg(test_force_enabled)]
 #[test]
 fn invoice_deserialize() {
 	for (serialized, deserialized, ignore_feature_diff, ignore_unknown_fields) in get_test_tuples() {

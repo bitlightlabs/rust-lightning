@@ -286,7 +286,7 @@ mod real_chacha {
 			}
 		}
 
-		#[cfg(test)]
+		#[cfg(test_force_enabled)]
 		pub fn seek_to_block(&mut self, block_offset: u32) {
 			self.state.d.0 = block_offset;
 			self.update();
@@ -332,7 +332,7 @@ mod fuzzy_chacha {
 #[cfg(fuzzing)]
 pub use self::fuzzy_chacha::ChaCha20;
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use core::iter::repeat;
 

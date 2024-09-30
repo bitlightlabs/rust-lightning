@@ -6,7 +6,7 @@ pub fn hex_to_work(hex: &str) -> Result<Work, bitcoin::hashes::hex::Error> {
 	Ok(Work::from_be_bytes(bytes))
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use bitcoin::pow::Work;

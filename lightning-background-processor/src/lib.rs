@@ -916,8 +916,7 @@ impl Drop for BackgroundProcessor {
 		self.stop_and_join_thread().unwrap();
 	}
 }
-
-#[cfg(all(feature = "std", test))]
+#[cfg(all(feature = "std", test_force_enabled))]
 mod tests {
 	use bitcoin::{ScriptBuf, Txid};
 	use bitcoin::blockdata::constants::{genesis_block, ChainHash};

@@ -16,6 +16,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 rest-client = [ "serde_json", "chunked_transfer" ]
 rpc-client = [ "serde_json", "chunked_transfer" ]
+test_force_enabled = []
 
 [dependencies]
 bitcoin = "0.30.2"

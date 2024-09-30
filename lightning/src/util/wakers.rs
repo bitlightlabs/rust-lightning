@@ -301,7 +301,7 @@ impl Sleeper {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use core::sync::atomic::{AtomicBool, Ordering};

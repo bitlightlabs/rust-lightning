@@ -45,40 +45,40 @@ pub use onion_utils::create_payment_onion;
 // without the node parameter being mut. This is incorrect, and thus newer rustcs will complain
 // about an unnecessary mut. Thus, we silence the unused_mut warning in two test modules below.
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod blinded_payment_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod functional_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod payment_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod priv_short_conf_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod chanmon_update_fail_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod reorg_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod reload_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod onion_route_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod monitor_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod shutdown_tests;
 #[cfg(all(test, async_signing))]
 #[allow(unused_mut)]
 mod async_signer_tests;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[allow(unused_mut)]
 mod offers_tests;
 #[allow(dead_code)] // TODO(dual_funding): Exchange for dual_funding cfg

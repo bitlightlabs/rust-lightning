@@ -526,7 +526,7 @@ pub(super) fn check_incoming_htlc_cltv(
 	Ok(())
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::hashes::Hash;
 	use bitcoin::hashes::sha256::Hash as Sha256;

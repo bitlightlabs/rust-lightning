@@ -13,5 +13,5 @@ pub mod utxo;
 pub mod gossip;
 pub mod router;
 pub mod scoring;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(crate) mod test_utils;

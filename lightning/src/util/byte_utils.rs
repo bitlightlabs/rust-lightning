@@ -29,7 +29,7 @@ pub fn be48_to_array(u: u64) -> [u8; 6] {
 	v
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 

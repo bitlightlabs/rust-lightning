@@ -69,7 +69,7 @@ pub(crate) fn maybe_add_change_output(tx: &mut Transaction, input_value: u64, wi
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 

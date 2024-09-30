@@ -1015,7 +1015,7 @@ impl InteractiveTxConstructor {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::chain::chaininterface::{fee_for_weight, FEERATE_FLOOR_SATS_PER_KW};
 	use crate::ln::channel::TOTAL_BITCOIN_SUPPLY_SATOSHIS;

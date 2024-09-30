@@ -426,7 +426,7 @@ macro_rules! offer_builder_methods { (
 	}
 } }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 macro_rules! offer_builder_test_methods { (
 	$self: ident, $self_type: ty, $return_type: ty, $return_value: expr $(, $self_mut: tt)?
 ) => {
@@ -463,7 +463,7 @@ macro_rules! offer_builder_test_methods { (
 impl<'a, M: MetadataStrategy, T: secp256k1::Signing> OfferBuilder<'a, M, T> {
 	offer_builder_methods!(self, Self, Self, self, mut);
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	offer_builder_test_methods!(self, Self, Self, self, mut);
 }
 
@@ -549,7 +549,6 @@ pub struct Offer {
 /// [`InvoiceRequest`]: crate::offers::invoice_request::InvoiceRequest
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub(super) struct OfferContents {
 	chains: Option<Vec<ChainHash>>,
 	metadata: Option<Metadata>,
@@ -764,7 +763,7 @@ impl Offer {
 	request_invoice_explicit_payer_id!(self, InvoiceRequestWithExplicitPayerIdBuilder);
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl Offer {
 	pub(super) fn as_tlv_stream(&self) -> OfferTlvStreamRef {
 		self.contents.as_tlv_stream()
@@ -1129,7 +1128,7 @@ impl core::fmt::Display for Offer {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{Amount, Offer, OfferTlvStreamRef, Quantity};
 	#[cfg(not(c_bindings))]
@@ -1812,7 +1811,7 @@ mod tests {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod bolt12_tests {
 	use super::{Bolt12ParseError, Bolt12SemanticError, Offer};
 	use crate::ln::msgs::DecodeError;

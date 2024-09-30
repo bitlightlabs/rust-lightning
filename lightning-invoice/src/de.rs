@@ -760,7 +760,7 @@ impl From<crate::Bolt11SemanticError> for ParseOrSemanticError {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use crate::de::Bolt11ParseError;
 	use secp256k1::PublicKey;

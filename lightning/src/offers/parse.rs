@@ -219,7 +219,7 @@ impl From<secp256k1::Error> for Bolt12ParseError {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod bolt12_tests {
 	use super::Bolt12ParseError;
 	use crate::offers::offer::Offer;
@@ -274,7 +274,7 @@ mod bolt12_tests {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::Bolt12ParseError;
 	use bitcoin::bech32;

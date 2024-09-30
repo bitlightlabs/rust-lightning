@@ -16,6 +16,8 @@ features = ["std"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [features]
+test_force_enabled = []
+
 # Internal test utilities exposed to other repo crates
 _test_utils = ["regex", "bitcoin/bitcoinconsensus"]
 # Unlog messages superior at targeted level.

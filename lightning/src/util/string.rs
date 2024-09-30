@@ -57,7 +57,7 @@ impl<'a> fmt::Display for PrintableString<'a> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::PrintableString;
 

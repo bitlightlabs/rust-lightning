@@ -1228,15 +1228,15 @@ impl Writeable for Event {
 			&Event::PaymentPathFailed {
 				ref payment_id, ref payment_hash, ref payment_failed_permanently, ref failure,
 				ref path, ref short_channel_id,
-				#[cfg(test)]
+#[cfg(test)]
 				ref error_code,
-				#[cfg(test)]
+#[cfg(test)]
 				ref error_data,
 			} => {
 				3u8.write(writer)?;
-				#[cfg(test)]
+#[cfg(test)]
 				error_code.write(writer)?;
-				#[cfg(test)]
+#[cfg(test)]
 				error_data.write(writer)?;
 				write_tlv_fields!(writer, {
 					(0, payment_hash, required),
@@ -1512,9 +1512,9 @@ impl MaybeReadable for Event {
 			},
 			3u8 => {
 				let mut f = || {
-					#[cfg(test)]
+#[cfg(test)]
 					let error_code = Readable::read(reader)?;
-					#[cfg(test)]
+#[cfg(test)]
 					let error_data = Readable::read(reader)?;
 					let mut payment_hash = PaymentHash([0; 32]);
 					let mut payment_failed_permanently = false;
@@ -1544,9 +1544,9 @@ impl MaybeReadable for Event {
 						failure,
 						path: Path { hops: path.unwrap(), blinded_tail },
 						short_channel_id,
-						#[cfg(test)]
+#[cfg(test)]
 						error_code,
-						#[cfg(test)]
+#[cfg(test)]
 						error_data,
 					}))
 				};
@@ -1879,7 +1879,7 @@ impl MaybeReadable for Event {
 /// broadcast to most peers).
 /// These events are handled by PeerManager::process_events if you are using a PeerManager.
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+
 pub enum MessageSendEvent {
 	/// Used to indicate that we've accepted a channel open and should send the accept_channel
 	/// message provided to the given peer.

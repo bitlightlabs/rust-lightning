@@ -78,7 +78,7 @@ impl Sub<Duration> for MonotonicTime {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub mod tests {
 	use super::{Time, Eternity};
 

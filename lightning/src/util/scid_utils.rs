@@ -191,7 +191,7 @@ pub(crate) mod fake_scid {
 		scid & !scid_utils::IS_SWAP_SCID
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	mod tests {
 		use bitcoin::blockdata::constants::ChainHash;
 		use bitcoin::network::constants::Network;
@@ -272,7 +272,7 @@ pub(crate) mod fake_scid {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 

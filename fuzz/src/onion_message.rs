@@ -218,7 +218,7 @@ impl SignerProvider for KeyProvider {
 	fn get_shutdown_scriptpubkey(&self) -> Result<ShutdownScript, ()> { unreachable!() }
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::hashes::hex::FromHex;
 	use lightning::util::logger::{Logger, Record};

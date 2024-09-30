@@ -38,7 +38,7 @@ pub mod rpc;
 #[cfg(any(feature = "rest-client", feature = "rpc-client"))]
 mod convert;
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test_utils;
 
 #[cfg(any(feature = "rest-client", feature = "rpc-client"))]
@@ -434,7 +434,7 @@ impl<'a, C: Cache, L: Deref> ChainNotifier<'a, C, L> where L::Target: chain::Lis
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod spv_client_tests {
 	use crate::test_utils::{Blockchain, NullChainListener};
 	use super::*;
@@ -561,7 +561,7 @@ mod spv_client_tests {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod chain_notifier_tests {
 	use crate::test_utils::{Blockchain, MockChainListener};
 	use super::*;

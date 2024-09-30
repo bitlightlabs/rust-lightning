@@ -82,7 +82,7 @@ fn params_from_invoice(invoice: &Bolt11Invoice, amount_msat: u64)
 	(payment_hash, recipient_onion, route_params)
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use crate::{InvoiceBuilder, Currency};

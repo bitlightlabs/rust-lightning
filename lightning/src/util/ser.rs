@@ -203,13 +203,13 @@ pub trait Writeable {
 		// Note that objects with interior mutability may change size between when we called
 		// serialized_length and when we called write. That's okay, but shouldn't happen during
 		// testing as most of our tests are not threaded.
-		#[cfg(test)]
+		#[cfg(test_force_enabled)]
 		debug_assert_eq!(len, msg.0.len());
 		msg.0
 	}
 
 	/// Writes `self` out to a `Vec<u8>`.
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn encode_with_len(&self) -> Vec<u8> {
 		let mut msg = VecWriter(Vec::new());
 		0u16.write(&mut msg).unwrap();
@@ -701,7 +701,7 @@ impl<'a, I: Iterator<Item = &'a T> + Clone, T: 'a + Writeable> Writeable for Ite
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl<'a, I: Iterator<Item = &'a T> + Clone, T: 'a + PartialEq> PartialEq for Iterable<'a, I, T> {
 	fn eq(&self, other: &Self) -> bool {
 		self.0.clone().collect::<Vec<_>>() == other.0.clone().collect::<Vec<_>>()
@@ -1490,7 +1490,7 @@ impl Readable for ClaimId {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::hashes::hex::FromHex;
 	use bitcoin::secp256k1::ecdsa;

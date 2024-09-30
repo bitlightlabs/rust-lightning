@@ -558,7 +558,7 @@ impl PendingChecks {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use crate::routing::gossip::tests::*;

@@ -83,7 +83,7 @@ pub(super) fn gen_ammag_from_shared_secret(shared_secret: &[u8]) -> [u8; 32] {
 	Hmac::from_engine(hmac).to_byte_array()
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 #[inline]
 pub(super) fn gen_pad_from_shared_secret(shared_secret: &[u8]) -> [u8; 32] {
 	assert_eq!(shared_secret.len(), 32);
@@ -339,7 +339,7 @@ pub(super) fn construct_trampoline_onion_packet(
 	)
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 /// Used in testing to write bogus `BogusOnionHopData` as well as `RawOnionHopData`, which is
 /// otherwise not representable in `msgs::OnionHopData`.
 pub(super) fn construct_onion_packet_with_writable_hopdata<HD: Writeable>(
@@ -501,7 +501,7 @@ pub(super) fn build_failure_packet(
 	packet
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(super) fn build_first_hop_failure_packet(
 	shared_secret: &[u8], failure_type: u16, failure_data: &[u8],
 ) -> msgs::OnionErrorPacket {
@@ -606,7 +606,7 @@ where
 						error_code_ret = Some(BADONION | PERM | 24); // invalid_onion_blinding
 						error_packet_ret = Some(vec![0; 32]);
 					}
-					#[cfg(test)]
+					#[cfg(test_force_enabled)]
 					{
 						// Actually parse the onion error data in tests so we can check that blinded hops fail
 						// back correctly.
@@ -884,9 +884,9 @@ where
 			short_channel_id,
 			payment_failed_permanently,
 			failed_within_blinded_path,
-			#[cfg(test)]
+#[cfg(test)]
 			onion_error_code: error_code_ret,
-			#[cfg(test)]
+#[cfg(test)]
 			onion_error_data: error_packet_ret,
 		}
 	} else {
@@ -897,20 +897,20 @@ where
 			short_channel_id: None,
 			payment_failed_permanently: is_from_final_node,
 			failed_within_blinded_path: false,
-			#[cfg(test)]
+#[cfg(test)]
 			onion_error_code: None,
-			#[cfg(test)]
+#[cfg(test)]
 			onion_error_data: None,
 		}
 	}
 }
 
 #[derive(Clone)] // See Channel::revoke_and_ack for why, tl;dr: Rust bug
-#[cfg_attr(test, derive(PartialEq))]
+
 pub(super) struct HTLCFailReason(HTLCFailReasonRepr);
 
 #[derive(Clone)] // See Channel::revoke_and_ack for why, tl;dr: Rust bug
-#[cfg_attr(test, derive(PartialEq))]
+
 enum HTLCFailReasonRepr {
 	LightningError { err: msgs::OnionErrorPacket },
 	Reason { failure_code: u16, data: Vec<u8> },
@@ -1055,9 +1055,9 @@ impl HTLCFailReason {
 						payment_failed_permanently: false,
 						short_channel_id: Some(path.hops[0].short_channel_id),
 						failed_within_blinded_path: false,
-						#[cfg(test)]
+#[cfg(test)]
 						onion_error_code: Some(*failure_code),
-						#[cfg(test)]
+#[cfg(test)]
 						onion_error_data: Some(data.clone()),
 					}
 				} else {
@@ -1223,7 +1223,7 @@ fn decode_next_hop<T, R: ReadableArgs<T>, N: NextPacketBytes>(
 				});
 			}
 			if hmac == [0; 32] {
-				#[cfg(test)]
+#[cfg(test)]
 				{
 					if chacha_stream.read.position() < hop_data.len() as u64 - 64 {
 						// In tests, make sure that the initial onion packet data is, at least, non-0.
@@ -1263,7 +1263,7 @@ fn decode_next_hop<T, R: ReadableArgs<T>, N: NextPacketBytes>(
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::io;
 	use crate::ln::features::{ChannelFeatures, NodeFeatures};

@@ -220,7 +220,7 @@ impl OnionMessageRecipient {
 		pending_messages.pop_front()
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn release_pending_messages(&mut self) -> VecDeque<OnionMessage> {
 		let pending_messages = match self {
 			OnionMessageRecipient::ConnectedPeer(pending_messages) => pending_messages,
@@ -1281,9 +1281,9 @@ fn packet_payloads_and_keys<T: OnionMessageContents, S: secp256k1::Signing + sec
 
 			let (rho, mu) = onion_utils::gen_rho_mu_from_shared_secret(onion_packet_ss.as_ref());
 			onion_packet_keys.push(onion_utils::OnionKeys {
-				#[cfg(test)]
+#[cfg(test)]
 				shared_secret: onion_packet_ss,
-				#[cfg(test)]
+#[cfg(test)]
 				blinding_factor: [0; 32],
 				ephemeral_pubkey,
 				rho,

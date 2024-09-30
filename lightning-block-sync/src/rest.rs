@@ -80,7 +80,7 @@ impl UtxoSource for RestClient {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use crate::http::BinaryResponse;

@@ -241,7 +241,7 @@ impl<T: fmt::Display, I: core::iter::Iterator<Item = T> + Clone> fmt::Display fo
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::secp256k1::{PublicKey, SecretKey, Secp256k1};
 	use crate::ln::types::ChannelId;

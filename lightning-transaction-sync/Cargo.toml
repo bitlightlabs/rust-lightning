@@ -21,6 +21,7 @@ esplora-async-https = ["esplora-async", "esplora-client/async-https-rustls"]
 esplora-blocking = ["esplora-client/blocking"]
 electrum = ["electrum-client"]
 async-interface = []
+test_force_enabled = []
 
 [dependencies]
 lightning = { version = "0.0.123", path = "../lightning", default-features = false, features = ["std"] }

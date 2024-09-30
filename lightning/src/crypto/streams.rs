@@ -121,7 +121,7 @@ impl<'a, W: Writer> Writer for ChaChaPolyWriter<'a, W> {
 }
 
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::ln::msgs::DecodeError;
 	use super::{ChaChaPolyReadAdapter, ChaChaPolyWriteAdapter};

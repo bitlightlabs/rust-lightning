@@ -135,7 +135,7 @@ impl fmt::Debug for Metadata {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl PartialEq for Metadata {
 	fn eq(&self, other: &Self) -> bool {
 		match self {

@@ -320,7 +320,7 @@ impl Retry {
 			#[cfg(all(feature = "std", not(test)))]
 			(Retry::Timeout(max_duration), PaymentAttempts { first_attempted_at, .. }) =>
 				*max_duration >= crate::util::time::MonotonicTime::now().duration_since(*first_attempted_at),
-			#[cfg(all(feature = "std", test))]
+			#[cfg(all(feature = "std", test_force_enabled))]
 			(Retry::Timeout(max_duration), PaymentAttempts { first_attempted_at, .. }) =>
 				*max_duration >= SinceEpoch::now().duration_since(*first_attempted_at),
 		}
@@ -1194,9 +1194,9 @@ impl OutboundPayments {
 					failure: events::PathFailure::InitialSend { err: e },
 					path,
 					short_channel_id: failed_scid,
-					#[cfg(test)]
+#[cfg(test)]
 					error_code: None,
-					#[cfg(test)]
+#[cfg(test)]
 					error_data: None,
 				}, None));
 			}
@@ -1633,7 +1633,7 @@ impl OutboundPayments {
 		probing_cookie_secret: [u8; 32], secp_ctx: &Secp256k1<secp256k1::All>,
 		pending_events: &Mutex<VecDeque<(events::Event, Option<EventCompletionAction>)>>, logger: &L,
 	) -> bool where L::Target: Logger {
-		#[cfg(test)]
+#[cfg(test)]
 		let DecodedOnionFailure {
 			network_update, short_channel_id, payment_failed_permanently, onion_error_code,
 			onion_error_data, failed_within_blinded_path
@@ -1746,9 +1746,9 @@ impl OutboundPayments {
 					failure: events::PathFailure::OnPath { network_update },
 					path: path.clone(),
 					short_channel_id,
-					#[cfg(test)]
+#[cfg(test)]
 					error_code: onion_error_code,
-					#[cfg(test)]
+#[cfg(test)]
 					error_data: onion_error_data
 				}
 			}
@@ -1856,7 +1856,7 @@ impl_writeable_tlv_based_enum_upgradable!(PendingOutboundPayment,
 	},
 );
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::network::constants::Network;
 	use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};

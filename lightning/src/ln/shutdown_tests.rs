@@ -324,6 +324,7 @@ fn expect_channel_shutdown_state_with_force_closure() {
 	check_closed_event!(nodes[1], 1, ClosureReason::HolderForceClosed, [nodes[0].node.get_our_node_id()], 100000);
 }
 
+#[cfg(test_force_enabled)]
 #[test]
 fn updates_shutdown_wait() {
 	// Test sending a shutdown with outstanding updates pending

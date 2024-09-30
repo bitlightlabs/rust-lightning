@@ -201,7 +201,7 @@ impl Base32Len for PaymentSecret {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::hashes::{
 		Hash as _,

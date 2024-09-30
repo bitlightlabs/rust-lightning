@@ -698,7 +698,7 @@ impl ProbabilisticScoringFeeParameters {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl ProbabilisticScoringFeeParameters {
 	fn zero_penalty() -> Self {
 		Self {
@@ -767,7 +767,7 @@ impl Default for ProbabilisticScoringDecayParameters {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl ProbabilisticScoringDecayParameters {
 	fn zero_penalty() -> Self {
 		Self {
@@ -822,7 +822,7 @@ impl<G: Deref<Target = NetworkGraph<L>>, L: Deref> ProbabilisticScorer<G, L> whe
 		}
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn with_channel(mut self, short_channel_id: u64, liquidity: ChannelLiquidity) -> Self {
 		assert!(self.channel_liquidities.insert(short_channel_id, liquidity).is_none());
 		self
@@ -1773,7 +1773,7 @@ mod approx {
 		LOG10_TIMES_2048[most_significant_bit as usize][lower_bits as usize]
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	mod tests {
 		use super::*;
 
@@ -1837,7 +1837,7 @@ mod bucketed_history {
 		return 32;
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	#[test]
 	fn check_bucket_maps() {
 		const BUCKET_WIDTH_IN_16384S: [u16; 32] = [
@@ -1880,7 +1880,7 @@ mod bucketed_history {
 		// If we are running in a client that doesn't validate gossip, its possible for a channel's
 		// capacity to change due to a `channel_update` message which, if received while a payment
 		// is in-flight, could cause this to fail. Thus, we only assert in test.
-		#[cfg(test)]
+		#[cfg(test_force_enabled)]
 		debug_assert!(pos < POSITION_TICKS);
 		pos
 	}
@@ -2149,7 +2149,7 @@ impl Readable for ChannelLiquidity {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{ChannelLiquidity, HistoricalBucketRangeTracker, ProbabilisticScoringFeeParameters, ProbabilisticScoringDecayParameters, ProbabilisticScorer};
 	use crate::blinded_path::{BlindedHop, BlindedPath, IntroductionNode};

@@ -1342,7 +1342,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitor<Signer> {
 		})
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn provide_secret(&self, idx: u64, secret: [u8; 32]) -> Result<(), &'static str> {
 		self.inner.lock().unwrap().provide_secret(idx, secret)
 	}
@@ -1372,7 +1372,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitor<Signer> {
 	/// The monitor watches for it to be broadcasted and then uses the HTLC information (and
 	/// possibly future revocation/preimage information) to claim outputs where possible.
 	/// We cache also the mapping hash:commitment number to lighten pruning of old preimages by watchtowers.
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn provide_latest_counterparty_commitment_tx<L: Deref>(
 		&self,
 		txid: Txid,
@@ -1387,7 +1387,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitor<Signer> {
 			txid, htlc_outputs, commitment_number, their_per_commitment_point, &logger)
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn provide_latest_holder_commitment_tx(
 		&self, holder_commitment_tx: HolderCommitmentTransaction,
 		htlc_outputs: Vec<(HTLCOutputInCommitment, Option<Signature>, Option<HTLCSource>)>,
@@ -3968,7 +3968,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitorImpl<Signer> {
 			let idx_and_scripts = txouts.iter().map(|o| (o.0, o.1.script_pubkey.clone())).collect();
 			self.outputs_to_watch.insert(txid.clone(), idx_and_scripts).is_none()
 		});
-		#[cfg(test)]
+#[cfg(test)]
 		{
 		        // If we see a transaction for which we registered outputs previously,
 			// make sure the registered scriptpubkey at the expected index match
@@ -4061,7 +4061,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitorImpl<Signer> {
 			if let Some(outputs) = self.get_outputs_to_watch().get(&input.previous_output.txid) {
 				for (idx, _script_pubkey) in outputs.iter() {
 					if *idx == input.previous_output.vout {
-						#[cfg(test)]
+#[cfg(test)]
 						{
 							// If the expected script is a known type, check that the witness
 							// appears to be spending the correct type (ie that the match would
@@ -4787,7 +4787,7 @@ impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::blockdata::locktime::absolute::LockTime;
 	use bitcoin::blockdata::script::{ScriptBuf, Builder};

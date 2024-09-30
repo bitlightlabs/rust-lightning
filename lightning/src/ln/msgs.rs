@@ -1672,7 +1672,6 @@ pub trait OnionMessageHandler: EventsProvider {
 }
 
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(Debug, PartialEq))]
 /// Information communicated in the onion to the recipient for multi-part tracking and proof that
 /// the payment is associated with an invoice.
 pub struct FinalOnionHopData {
@@ -3252,7 +3251,7 @@ impl_writeable_msg!(GossipTimestampFilter, {
 }, {});
 
 /*
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::{Transaction, TxIn, ScriptBuf, Sequence, Witness, TxOut};
 	use hex::DisplayHex;

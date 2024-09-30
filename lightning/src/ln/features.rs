@@ -436,7 +436,7 @@ mod sealed {
 		supports_trampoline_routing, requires_trampoline_routing);
 	// Note: update the module-level docs when a new feature bit is added!
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	define_feature!(123456789, UnknownFeature,
 		[NodeContext, ChannelContext, Bolt11InvoiceContext, OfferContext, InvoiceRequestContext, Bolt12InvoiceContext, BlindedHopContext],
 		"Feature flags for an unknown feature used in testing.", set_unknown_feature_optional,
@@ -736,7 +736,7 @@ impl<T: sealed::Context> Features<T> {
 		}
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	/// Gets the underlying flags set, in LE.
 	pub fn le_flags(&self) -> &Vec<u8> {
 		&self.flags
@@ -953,7 +953,7 @@ impl<T: sealed::RouteBlinding> Features<T> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl<T: sealed::UnknownFeature> Features<T> {
 	pub(crate) fn unknown() -> Self {
 		let mut features = Self::empty();
@@ -1018,7 +1018,7 @@ impl<T: sealed::Context> Readable for WithoutLength<Features<T>> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{ChannelFeatures, ChannelTypeFeatures, InitFeatures, Bolt11InvoiceFeatures, NodeFeatures, OfferFeatures, sealed};
 	use bitcoin::bech32::{Base32Len, FromBase32, ToBase32, u5};

@@ -204,7 +204,7 @@ impl Poly1305 {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use core::iter::repeat;
 

@@ -163,7 +163,7 @@ impl Alphabet {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 

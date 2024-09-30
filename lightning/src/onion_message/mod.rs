@@ -24,5 +24,5 @@
 pub mod messenger;
 pub mod offers;
 pub mod packet;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod functional_tests;

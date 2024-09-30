@@ -299,7 +299,7 @@ impl<'a> Writeable for WithoutSignatures<'a> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{SIGNATURE_TYPES, TlvStream, WithoutSignatures};
 

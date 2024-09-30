@@ -5,6 +5,7 @@ edition = "2021"
 
 [features]
 default = ["lightning/no-std", "lightning-invoice/no-std", "lightning-rapid-gossip-sync/no-std"]
+test_force_enabled = []
 
 [dependencies]
 lightning = { path = "../lightning", default-features = false }

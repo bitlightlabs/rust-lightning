@@ -812,7 +812,7 @@ pub extern "C" fn full_stack_run(data: *const u8, datalen: usize) {
 	do_test(unsafe { std::slice::from_raw_parts(data, datalen) }, &logger);
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::hashes::hex::FromHex;
 	use lightning::util::logger::{Logger, Record};

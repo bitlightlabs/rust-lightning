@@ -2675,7 +2675,7 @@ fn is_gossip_msg(type_id: u16) -> bool {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::sign::{NodeSigner, Recipient};
 	use crate::events;

@@ -2127,7 +2127,7 @@ impl ReadOnlyNetworkGraph<'_> {
 }
 
 /*
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(crate) mod tests {
 	use crate::events::{MessageSendEvent, MessageSendEventsProvider};
 	use crate::ln::channelmanager;

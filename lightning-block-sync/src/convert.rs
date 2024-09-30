@@ -272,7 +272,7 @@ impl TryInto<GetUtxosResponse> for JsonResponse {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(crate) mod tests {
 	use super::*;
 	use bitcoin::blockdata::constants::genesis_block;

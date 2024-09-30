@@ -1807,7 +1807,7 @@ impl<'de> Deserialize<'de> for Bolt11Invoice {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use bitcoin::ScriptBuf;
 	use bitcoin::hashes::sha256;

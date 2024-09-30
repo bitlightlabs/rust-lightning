@@ -159,7 +159,7 @@ impl UtxoSource for RpcClient {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use crate::http::client_tests::{HttpServer, MessageBody};

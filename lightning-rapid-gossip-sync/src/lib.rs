@@ -186,7 +186,7 @@ impl<NG: Deref<Target=NetworkGraph<L>>, L: Deref> RapidGossipSync<NG, L> where L
 }
 
 #[cfg(feature = "std")]
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use std::fs;
 

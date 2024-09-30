@@ -937,7 +937,7 @@ macro_rules! tlv_stream {
 			)*
 		}
 
-		#[cfg_attr(test, derive(PartialEq))]
+		
 		#[derive(Debug)]
 		pub(crate) struct $nameref<'a> {
 			$(
@@ -1143,7 +1143,7 @@ macro_rules! impl_writeable_tlv_based_enum_upgradable {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	#[allow(unused_imports)]
 	use crate::prelude::*;

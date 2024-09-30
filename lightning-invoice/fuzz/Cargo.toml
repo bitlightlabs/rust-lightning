@@ -11,6 +11,7 @@ cargo-fuzz = true
 [features]
 afl_fuzz = ["afl"]
 honggfuzz_fuzz = ["honggfuzz"]
+test_force_enabled = []
 
 [dependencies]
 honggfuzz = { version = "0.5", optional = true, default-features = false }

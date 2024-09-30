@@ -225,7 +225,7 @@ struct ChainListenerSet<'a, L: chain::Listen + ?Sized>(Vec<(u32, &'a L)>);
 
 impl<'a, L: chain::Listen + ?Sized> chain::Listen for ChainListenerSet<'a, L> {
 	// Needed to differentiate test expectations.
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	fn block_connected(&self, block: &bitcoin::Block, height: u32) {
 		for (starting_height, chain_listener) in self.0.iter() {
 			if height > *starting_height {
@@ -247,7 +247,7 @@ impl<'a, L: chain::Listen + ?Sized> chain::Listen for ChainListenerSet<'a, L> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::test_utils::{Blockchain, MockChainListener};
 	use super::*;

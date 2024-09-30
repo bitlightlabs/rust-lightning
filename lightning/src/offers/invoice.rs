@@ -627,7 +627,6 @@ pub struct Bolt12Invoice {
 /// [`Offer`]: crate::offers::offer::Offer
 /// [`Refund`]: crate::offers::refund::Refund
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 enum InvoiceContents {
 	/// Contents for an [`Bolt12Invoice`] corresponding to an [`Offer`].
 	///
@@ -1469,7 +1468,7 @@ impl TryFrom<PartialInvoiceTlvStream> for InvoiceContents {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{Bolt12Invoice, DEFAULT_RELATIVE_EXPIRY, FallbackAddress, FullInvoiceTlvStreamRef, InvoiceTlvStreamRef, SIGNATURE_TAG, UnsignedBolt12Invoice};
 

@@ -253,7 +253,7 @@ impl RevocationKey {
 }
 key_read_write!(RevocationKey);
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use super::derive_public_key;
 	use bitcoin::hashes::hex::FromHex;

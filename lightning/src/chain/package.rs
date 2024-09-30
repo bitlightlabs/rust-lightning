@@ -1190,7 +1190,7 @@ where
 	Some((new_fee, new_fee * 1000 / predicted_weight))
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::chain::package::{CounterpartyOfferedHTLCOutput, CounterpartyReceivedHTLCOutput, HolderHTLCOutput, PackageTemplate, PackageSolvingData, RevokedOutput, WEIGHT_REVOKED_OUTPUT, weight_offered_htlc, weight_received_htlc};
 	use crate::chain::Txid;

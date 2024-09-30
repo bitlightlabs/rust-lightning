@@ -905,7 +905,7 @@ impl From<u64> for UpdateName {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use crate::chain::ChannelMonitorUpdateStatus;

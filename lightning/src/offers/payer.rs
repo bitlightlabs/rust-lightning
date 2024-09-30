@@ -20,7 +20,6 @@ use crate::prelude::*;
 ///
 /// [`InvoiceRequest::payer_id`]: crate::offers::invoice_request::InvoiceRequest::payer_id
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub(super) struct PayerContents(pub Metadata);
 
 /// TLV record type for [`InvoiceRequest::payer_metadata`] and [`Refund::payer_metadata`].

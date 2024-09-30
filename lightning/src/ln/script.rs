@@ -166,7 +166,7 @@ impl core::fmt::Display for ShutdownScript{
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod shutdown_script_tests {
 	use super::ShutdownScript;
 

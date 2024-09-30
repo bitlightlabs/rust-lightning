@@ -377,7 +377,7 @@ macro_rules! invoice_request_builder_methods { (
 	}
 } }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 macro_rules! invoice_request_builder_test_methods { (
 	$self: ident, $self_type: ty, $return_type: ty, $return_value: expr $(, $self_mut: tt)?
 ) => {
@@ -423,7 +423,7 @@ impl<'a, 'b, T: secp256k1::Signing> InvoiceRequestBuilder<'a, 'b, DerivedPayerId
 impl<'a, 'b, P: PayerIdStrategy, T: secp256k1::Signing> InvoiceRequestBuilder<'a, 'b, P, T> {
 	invoice_request_builder_methods!(self, Self, Self, self, T, mut);
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	invoice_request_builder_test_methods!(self, Self, Self, self, mut);
 }
 
@@ -596,7 +596,6 @@ impl AsRef<TaggedHash> for UnsignedInvoiceRequest {
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 /// [`Offer`]: crate::offers::offer::Offer
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub struct InvoiceRequest {
 	pub(super) bytes: Vec<u8>,
 	pub(super) contents: InvoiceRequestContents,
@@ -628,14 +627,12 @@ pub struct VerifiedInvoiceRequest {
 ///
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub(super) struct InvoiceRequestContents {
 	pub(super) inner: InvoiceRequestContentsWithoutPayerId,
 	payer_id: PublicKey,
 }
 
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
 pub(super) struct InvoiceRequestContentsWithoutPayerId {
 	payer: PayerContents,
 	pub(super) offer: OfferContents,
@@ -755,7 +752,7 @@ macro_rules! invoice_request_respond_with_explicit_signing_pubkey_methods { (
 		<$builder>::for_offer(&$contents, payment_paths, created_at, payment_hash, signing_pubkey)
 	}
 
-	#[cfg(test)]
+	#[cfg(test_force_enabled)]
 	#[allow(dead_code)]
 	pub(super) fn respond_with_no_std_using_signing_pubkey(
 		&$self, payment_paths: Vec<(BlindedPayInfo, BlindedPath)>, payment_hash: PaymentHash,
@@ -1198,7 +1195,7 @@ impl Readable for InvoiceRequestFields {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{InvoiceRequest, InvoiceRequestFields, InvoiceRequestTlvStreamRef, PAYER_NOTE_LIMIT, SIGNATURE_TAG, UnsignedInvoiceRequest};
 

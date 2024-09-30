@@ -1836,7 +1836,7 @@ pub fn get_commitment_transaction_number_obscure_factor(
 }
 
 /*
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{CounterpartyCommitmentSecrets, ChannelPublicKeys};
 	use crate::chain;

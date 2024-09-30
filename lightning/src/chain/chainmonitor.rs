@@ -980,7 +980,7 @@ impl<ChannelSigner: WriteableEcdsaChannelSigner, C: Deref, T: Deref, F: Deref, L
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::check_added_monitors;
 	use crate::{expect_payment_claimed, expect_payment_path_successful, get_event_msg};

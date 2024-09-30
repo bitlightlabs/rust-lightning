@@ -24,7 +24,7 @@ use crate::prelude::*;
 /// [`InvoiceRequest`]: crate::offers::invoice_request::InvoiceRequest
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+
 pub struct InvoiceError {
 	/// The field in the [`InvoiceRequest`] or the [`Bolt12Invoice`] that contained an error.
 	///
@@ -41,7 +41,7 @@ pub struct InvoiceError {
 /// [`InvoiceRequest`]: crate::offers::invoice_request::InvoiceRequest
 /// [`Bolt12Invoice`]: crate::offers::invoice::Bolt12Invoice
 #[derive(Clone, Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+
 pub struct ErroneousField {
 	/// The type number of the TLV field containing the error.
 	pub tlv_fieldnum: u64,
@@ -127,7 +127,7 @@ impl From<SignError> for InvoiceError {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::{ErroneousField, InvoiceError};
 

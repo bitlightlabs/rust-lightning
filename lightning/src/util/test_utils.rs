@@ -14,7 +14,7 @@ use crate::chain;
 use crate::chain::WatchedOutput;
 use crate::chain::chaininterface;
 use crate::chain::chaininterface::ConfirmationTarget;
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 use crate::chain::chaininterface::FEERATE_FLOOR_SATS_PER_KW;
 use crate::chain::chainmonitor;
 use crate::chain::chainmonitor::{MonitorUpdateId, UpdateOrigin};
@@ -27,7 +27,7 @@ use crate::events;
 use crate::events::bump_transaction::{WalletSource, Utxo};
 use crate::ln::types::ChannelId;
 use crate::ln::channelmanager::{ChannelDetails, self};
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 use crate::ln::chan_utils::CommitmentTransaction;
 use crate::ln::features::{ChannelFeatures, InitFeatures, NodeFeatures};
 use crate::ln::{msgs, wire};
@@ -399,14 +399,14 @@ impl<'a> chain::Watch<TestChannelSigner> for TestChainMonitor<'a> {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 struct JusticeTxData {
 	justice_tx: Transaction,
 	value: u64,
 	commitment_number: u64,
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(crate) struct WatchtowerPersister {
 	persister: TestPersister,
 	/// Upon a new commitment_signed, we'll get a
@@ -420,7 +420,7 @@ pub(crate) struct WatchtowerPersister {
 	destination_script: ScriptBuf,
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl WatchtowerPersister {
 	#[cfg(test)]
 	pub(crate) fn new(destination_script: ScriptBuf) -> Self {
@@ -451,7 +451,7 @@ impl WatchtowerPersister {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 impl<Signer: sign::ecdsa::WriteableEcdsaChannelSigner> chainmonitor::Persist<Signer> for WatchtowerPersister {
 	fn persist_new_channel(&self, funding_txo: OutPoint,
 		data: &channelmonitor::ChannelMonitor<Signer>, id: MonitorUpdateId
@@ -742,7 +742,7 @@ impl TestChannelMessageHandler {
 		let mut msgs = self.expected_recv_msgs.lock().unwrap();
 		if msgs.is_none() { return; }
 		assert!(!msgs.as_ref().unwrap().is_empty(), "Received message when we weren't expecting one");
-		#[cfg(test)]
+		#[cfg(test_force_enabled)]
 		assert_eq!(msgs.as_ref().unwrap()[0], _ev);
 		msgs.as_mut().unwrap().remove(0);
 	}

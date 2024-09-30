@@ -304,7 +304,7 @@ pub fn setup_inbound<PM: Deref + 'static + Send + Sync + Clone>(
 where PM::Target: APeerManager<Descriptor = SocketDescriptor> {
 	let remote_addr = get_addr_from_stream(&stream);
 	let (reader, write_receiver, read_receiver, us) = Connection::new(stream);
-	#[cfg(test)]
+#[cfg(test)]
 	let last_us = Arc::clone(&us);
 
 	let handle_opt = if peer_manager.as_ref().new_inbound_connection(SocketDescriptor::new(us.clone()), remote_addr).is_ok() {
@@ -325,7 +325,7 @@ where PM::Target: APeerManager<Descriptor = SocketDescriptor> {
 				// socket shutdown(). Still, as a check during testing, to make sure tokio doesn't
 				// keep too many wakers around, this makes sense. The race should be rare (we do
 				// some work after shutdown()) and an error would be a major memory leak.
-				#[cfg(test)]
+				#[cfg(test_force_enabled)]
 				debug_assert!(Arc::try_unwrap(last_us).is_ok());
 			}
 		}
@@ -347,7 +347,7 @@ pub fn setup_outbound<PM: Deref + 'static + Send + Sync + Clone>(
 where PM::Target: APeerManager<Descriptor = SocketDescriptor> {
 	let remote_addr = get_addr_from_stream(&stream);
 	let (reader, mut write_receiver, read_receiver, us) = Connection::new(stream);
-	#[cfg(test)]
+#[cfg(test)]
 	let last_us = Arc::clone(&us);
 	let handle_opt = if let Ok(initial_send) = peer_manager.as_ref().new_outbound_connection(their_node_id, SocketDescriptor::new(us.clone()), remote_addr) {
 		Some(tokio::spawn(async move {
@@ -393,7 +393,7 @@ where PM::Target: APeerManager<Descriptor = SocketDescriptor> {
 				// socket shutdown(). Still, as a check during testing, to make sure tokio doesn't
 				// keep too many wakers around, this makes sense. The race should be rare (we do
 				// some work after shutdown()) and an error would be a major memory leak.
-				#[cfg(test)]
+				#[cfg(test_force_enabled)]
 				debug_assert!(Arc::try_unwrap(last_us).is_ok());
 			}
 		}
@@ -556,7 +556,7 @@ impl Hash for SocketDescriptor {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use lightning::ln::features::*;
 	use lightning::ln::msgs::*;

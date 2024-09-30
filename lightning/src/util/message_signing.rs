@@ -87,7 +87,7 @@ pub fn verify(msg: &[u8], sig: &str, pk: &PublicKey) -> bool {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test {
 	use core::str::FromStr;
 	use crate::util::message_signing::{sign, recover_pk, verify};

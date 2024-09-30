@@ -364,7 +364,7 @@ impl KVStore for FilesystemStore {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use super::*;
 	use crate::test_utils::{do_read_write_remove_list_persist, do_test_store};

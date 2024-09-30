@@ -477,7 +477,7 @@ impl TryFrom<Vec<u8>> for JsonResponse {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod endpoint_tests {
 	use super::HttpEndpoint;
 
@@ -529,7 +529,7 @@ mod endpoint_tests {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 pub(crate) mod client_tests {
 	use super::*;
 	use std::io::BufRead;

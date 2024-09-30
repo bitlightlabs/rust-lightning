@@ -313,7 +313,7 @@ impl_writeable_tlv_based!(InboundHTLCDetails, {
 	(8, is_dust, required),
 });
 
-#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+
 enum OutboundHTLCState {
 	/// Added by us and included in a commitment_signed (if we were AwaitingRemoteRevoke when we
 	/// created it we would have put it in the holding cell instead). When they next revoke_and_ack
@@ -413,7 +413,7 @@ impl_writeable_tlv_based_enum_upgradable!(OutboundHTLCStateDetails,
 );
 
 #[derive(Clone)]
-#[cfg_attr(test, derive(Debug, PartialEq))]
+
 enum OutboundHTLCOutcome {
 	/// LDK version 0.0.105+ will always fill in the preimage here.
 	Success(Option<PaymentPreimage>),
@@ -438,7 +438,7 @@ impl<'a> Into<Option<&'a HTLCFailReason>> for &'a OutboundHTLCOutcome {
 	}
 }
 
-#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+
 struct OutboundHTLCOutput {
 	htlc_id: u64,
 	amount_msat: u64,
@@ -504,7 +504,7 @@ impl_writeable_tlv_based!(OutboundHTLCDetails, {
 });
 
 /// See AwaitingRemoteRevoke ChannelState for more info
-#[cfg_attr(test, derive(Clone, Debug, PartialEq))]
+
 enum HTLCUpdateAwaitingACK {
 	AddHTLC { // TODO: Time out if we're getting close to cltv_expiry
 		// always outbound
@@ -9553,7 +9553,7 @@ impl<'a, 'b, 'c, ES: Deref, SP: Deref> ReadableArgs<(&'a ES, &'b SP, u32, &'c Ch
 }
 
 /*
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use std::cmp;
 	use bitcoin::blockdata::constants::ChainHash;

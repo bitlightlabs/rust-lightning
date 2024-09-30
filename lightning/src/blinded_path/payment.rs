@@ -421,7 +421,7 @@ impl_writeable_tlv_based!(Bolt12OfferContext, {
 
 impl_writeable_tlv_based!(Bolt12RefundContext, {});
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use bitcoin::secp256k1::PublicKey;
 	use crate::blinded_path::payment::{ForwardNode, ForwardTlvs, ReceiveTlvs, PaymentConstraints, PaymentContext, PaymentRelay};

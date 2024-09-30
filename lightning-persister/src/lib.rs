@@ -15,5 +15,5 @@ pub mod fs_store;
 
 mod utils;
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod test_utils;

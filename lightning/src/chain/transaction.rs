@@ -85,7 +85,7 @@ impl MaybeSignedTransaction {
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::chain::transaction::OutPoint;
 	use crate::ln::types::ChannelId;

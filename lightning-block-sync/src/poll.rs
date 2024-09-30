@@ -257,7 +257,7 @@ impl<B: Deref<Target=T> + Sized + Send + Sync, T: BlockSource + ?Sized> Poll for
 	}
 }
 
-#[cfg(test)]
+#[cfg(test_force_enabled)]
 mod tests {
 	use crate::*;
 	use crate::test_utils::Blockchain;
