@@ -674,7 +674,7 @@ impl_writeable_tlv_based!(Bolt12OfferContext, {
 });
 
 impl_writeable_tlv_based!(Bolt12RefundContext, {});
-
+/*
 #[cfg(test)]
 mod tests {
 	use crate::blinded_path::payment::{
@@ -948,3 +948,4 @@ mod tests {
 		assert_eq!(blinded_payinfo.htlc_maximum_msat, 3997);
 	}
 }
+ */

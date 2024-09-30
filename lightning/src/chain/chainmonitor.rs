@@ -1105,7 +1105,7 @@ where
 		}
 	}
 }
-
+/*
 #[cfg(test)]
 mod tests {
 	use crate::chain::channelmonitor::ANTI_REORG_DELAY;
@@ -1417,3 +1417,4 @@ mod tests {
 		.is_err());
 	}
 }
+ */

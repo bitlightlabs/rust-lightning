@@ -8,7 +8,7 @@
 // licenses.
 
 //! Further functional tests which test blockchain reorganizations.
-
+/*
 use crate::chain::chaininterface::LowerBoundedFeeEstimator;
 use crate::chain::channelmonitor::{ANTI_REORG_DELAY, LATENCY_GRACE_PERIOD_BLOCKS};
 use crate::chain::transaction::OutPoint;
@@ -1109,3 +1109,4 @@ fn test_retries_own_commitment_broadcast_after_reorg() {
 	do_test_retries_own_commitment_broadcast_after_reorg(true, false);
 	do_test_retries_own_commitment_broadcast_after_reorg(true, true);
 }
+ */

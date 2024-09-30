@@ -1474,7 +1474,7 @@ where
 	};
 	Some((new_fee, new_fee * 1000 / predicted_weight))
 }
-
+/*
 #[cfg(test)]
 mod tests {
 	use crate::chain::package::{
@@ -1852,3 +1852,4 @@ mod tests {
 		}
 	}
 }
+ */

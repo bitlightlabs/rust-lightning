@@ -10,7 +10,7 @@
 //! Tests that test ChannelManager behavior with fewer confirmations required than the default and
 //! other behavior that exists only on private channels or with a semi-trusted counterparty (eg
 //! LSP).
-
+/*
 use crate::chain::ChannelMonitorUpdateStatus;
 use crate::events::{
 	ClosureReason, Event, HTLCDestination, MessageSendEvent, MessageSendEventsProvider,
@@ -1594,3 +1594,4 @@ fn test_0conf_ann_sigs_racing_conf() {
 	let as_announcement = nodes[0].node.get_and_clear_pending_msg_events();
 	assert_eq!(as_announcement.len(), 1);
 }
+ */

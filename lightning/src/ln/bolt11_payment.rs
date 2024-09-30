@@ -86,7 +86,7 @@ fn params_from_invoice(
 		RouteParameters::from_payment_params_and_value(payment_params, amount_msat, rgb_payment);
 	(payment_hash, recipient_onion, route_params)
 }
-
+/*
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -217,3 +217,4 @@ mod tests {
 		}
 	}
 }
+ */

@@ -4926,9 +4926,6 @@ impl<Signer: EcdsaChannelSigner> ChannelMonitorImpl<Signer> {
 
 		// Used to check for duplicate HTLC resolutions.
 
-		#[cfg(debug_assertions)]
-		let mut matured_htlcs = Vec::new();
-
 		// Produce actionable events from on-chain events having reached their threshold.
 		for entry in onchain_events_reaching_threshold_conf.drain(..) {
 			match entry.event {

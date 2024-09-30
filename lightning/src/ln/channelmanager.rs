@@ -3351,7 +3351,7 @@ where
 				outbound_scid_alias,
 				temporary_channel_id,
 				consignment_endpoint,
-				self.ldk_data_dir,
+				self.ldk_data_dir.clone(),
 				&*self.logger,
 			) {
 				Ok(res) => res,
@@ -5008,11 +5008,8 @@ where
 	) -> Result<Vec<(PaymentHash, PaymentId)>, ProbeSendFailure> {
 		let payment_params = PaymentParameters::from_node_id(node_id, final_cltv_expiry_delta);
 
-		let route_params = RouteParameters::from_payment_params_and_value(
-			payment_params,
-			amount_msatamount_msat,
-			None,
-		);
+		let route_params =
+			RouteParameters::from_payment_params_and_value(payment_params, amount_msat, None);
 
 		self.send_preflight_probes(route_params, liquidity_limit_multiplier)
 	}
@@ -5667,48 +5664,44 @@ where
 	// `next_node_id` and not `next_hop_channel_id`
 	pub fn forward_intercepted_htlc(
 		&self, intercept_id: InterceptId, next_hop_channel_id: &ChannelId, next_node_id: PublicKey,
-		amt_to_forward_msat: u64,
+		amt_to_forward_msat: u64, amt_to_forward_rgb: Option<u64>,
 	) -> Result<(), APIError> {
 		let _persistence_guard = PersistenceNotifierGuard::notify_on_drop(self);
 
-		let next_hop_scid = match next_hop {
-			NextHopForward::ShortChannelId(scid) => scid,
-			NextHopForward::ChannelId(next_node_id, next_hop_channel_id) => {
-				let peer_state_lock = self.per_peer_state.read().unwrap();
-				let peer_state_mutex = peer_state_lock.get(&next_node_id).ok_or_else(|| {
-					APIError::ChannelUnavailable {
-						err: format!(
-							"Can't find a peer matching the passed counterparty node_id {}",
-							next_node_id
-						),
-					}
+		let next_hop_scid = {
+			let peer_state_lock = self.per_peer_state.read().unwrap();
+			let peer_state_mutex =
+				peer_state_lock.get(&next_node_id).ok_or_else(|| APIError::ChannelUnavailable {
+					err: format!(
+						"Can't find a peer matching the passed counterparty node_id {}",
+						next_node_id
+					),
 				})?;
-				let mut peer_state_lock = peer_state_mutex.lock().unwrap();
-				let peer_state = &mut *peer_state_lock;
-				match peer_state.channel_by_id.get(next_hop_channel_id) {
-				Some(ChannelPhase::Funded(chan)) => {
-					if !chan.context.is_usable() {
-						return Err(APIError::ChannelUnavailable {
-							err: format!("Channel with id {} not fully established", next_hop_channel_id)
-						})
-					}
-					chan.context.get_short_channel_id().unwrap_or(chan.context.outbound_scid_alias())
-				},
-				Some(_) => return Err(APIError::ChannelUnavailable {
-					err: format!("Channel with id {} for the passed counterparty node_id {} is still opening.",
-						next_hop_channel_id, next_node_id)
-				}),
-				None => {
-					let error = format!("Channel with id {} not found for the passed counterparty node_id {}",
-						next_hop_channel_id, next_node_id);
-					let logger = WithContext::from(&self.logger, Some(next_node_id), Some(*next_hop_channel_id), None);
-					log_error!(logger, "{} when attempting to forward intercepted HTLC", error);
+			let mut peer_state_lock = peer_state_mutex.lock().unwrap();
+			let peer_state = &mut *peer_state_lock;
+			match peer_state.channel_by_id.get(next_hop_channel_id) {
+			Some(ChannelPhase::Funded(chan)) => {
+				if !chan.context.is_usable() {
 					return Err(APIError::ChannelUnavailable {
-						err: error
-					})}
-
+						err: format!("Channel with id {} not fully established", next_hop_channel_id)
+					})
 				}
+				chan.context.get_short_channel_id().unwrap_or(chan.context.outbound_scid_alias())
 			},
+			Some(_) => return Err(APIError::ChannelUnavailable {
+				err: format!("Channel with id {} for the passed counterparty node_id {} is still opening.",
+					next_hop_channel_id, next_node_id)
+			}),
+			None => {
+				let error = format!("Channel with id {} not found for the passed counterparty node_id {}",
+					next_hop_channel_id, next_node_id);
+				let logger = WithContext::from(&self.logger, Some(next_node_id), Some(*next_hop_channel_id), None);
+				log_error!(logger, "{} when attempting to forward intercepted HTLC", error);
+				return Err(APIError::ChannelUnavailable {
+					err: error
+				})}
+
+			}
 		};
 
 		let payment = self
@@ -6282,7 +6275,7 @@ where
 									next_blinding_point,
 									&self.fee_estimator,
 									&&logger,
-									outgoing_amount_rgb
+									outgoing_amount_rgb,
 								) {
 									if let ChannelError::Ignore(msg) = e {
 										log_trace!(logger, "Failed to forward HTLC with payment_hash {} to peer {}: {}", &payment_hash, &counterparty_node_id, msg);

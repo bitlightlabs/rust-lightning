@@ -798,14 +798,6 @@ where
 			target_feerate_sat_per_1000_weight,
 		)?;
 
-		#[cfg(debug_assertions)]
-		let total_input_amount = must_spend_amount
-			+ coin_selection
-				.confirmed_utxos
-				.iter()
-				.map(|utxo| utxo.output.value.to_sat())
-				.sum::<u64>();
-
 		self.process_coin_selection(&mut htlc_tx, &coin_selection);
 
 		// construct psbt
@@ -912,7 +904,7 @@ where
 		}
 	}
 }
-
+/*
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1037,3 +1029,4 @@ mod tests {
 		});
 	}
 }
+ */

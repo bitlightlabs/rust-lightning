@@ -475,7 +475,6 @@ impl<'a, 'b, ES: EntropySource, SP: SignerProvider>
 			pending_claim_events: Vec::new(),
 			secp_ctx,
 			ldk_data_dir,
-			ldk_data_dir,
 		})
 	}
 }

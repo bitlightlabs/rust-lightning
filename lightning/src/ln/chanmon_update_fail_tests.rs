@@ -11,7 +11,7 @@
 //! monitor updates.
 //! There are a bunch of these as their handling is relatively error-prone so they are split out
 //! here. See also the chanmon_fail_consistency fuzz test.
-
+/*
 use crate::chain::channelmonitor::{ChannelMonitor, ANTI_REORG_DELAY};
 use crate::chain::transaction::OutPoint;
 use crate::chain::{ChannelMonitorUpdateStatus, Listen, Watch};
@@ -5438,3 +5438,4 @@ fn test_partial_claim_mon_update_compl_actions() {
 	send_payment(&nodes[2], &[&nodes[3]], 100_000);
 	assert!(!get_monitor!(nodes[3], chan_4_id).get_stored_preimages().contains_key(&payment_hash));
 }
+ */

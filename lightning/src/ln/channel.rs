@@ -24,7 +24,7 @@ use bitcoin::secp256k1;
 use bitcoin::secp256k1::constants::PUBLIC_KEY_SIZE;
 use bitcoin::secp256k1::{ecdsa::Signature, Secp256k1};
 use bitcoin::secp256k1::{PublicKey, SecretKey};
-use hex::DisplayHex;
+use bitcoin::hex::DisplayHex;
 
 use rgb_lib::RgbTransport;
 
@@ -11496,13 +11496,13 @@ where
 
 const MAX_ALLOC_SIZE: usize = 64 * 1024;
 impl<'a, 'b, 'c, ES: Deref, SP: Deref>
-	ReadableArgs<(&'a ES, &'b SP, u32, &'c ChannelTypeFeaturesPathBuf)> for Channel<SP>
+	ReadableArgs<(&'a ES, &'b SP, u32, &'c ChannelTypeFeatures, PathBuf)> for Channel<SP>
 where
 	ES::Target: EntropySource,
 	SP::Target: SignerProvider,
 {
 	fn read<R: io::Read>(
-		reader: &mut R, args: (&'a ES, &'b SP, u32, &'c ChannelTypeFeaturesPathBuf),
+		reader: &mut R, args: (&'a ES, &'b SP, u32, &'c ChannelTypeFeatures, PathBuf),
 	) -> Result<Self, DecodeError> {
 		let (
 			entropy_source,

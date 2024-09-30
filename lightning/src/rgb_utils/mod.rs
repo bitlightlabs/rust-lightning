@@ -12,6 +12,7 @@ use crate::ln::{ChannelId, PaymentHash};
 use crate::sign::SignerProvider;
 
 use bitcoin::blockdata::transaction::Transaction;
+use bitcoin::hex::DisplayHex;
 use bitcoin::psbt::Psbt;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::TxOut;
@@ -327,9 +328,9 @@ where
 	let wallet = futures::executor::block_on(_get_rgb_wallet(ldk_data_dir));
 	let (fascia, _) = wallet.color_psbt(&mut psbt, coloring_info).unwrap();
 	let psbt = Psbt::from_str(&psbt.to_string()).unwrap();
-	let modified_tx = psbt.extract_tx();
+	let modified_tx = psbt.extract_tx()?;
 
-	let txid = modified_tx.txid();
+	let txid = modified_tx.compute_txid();
 	commitment_transaction.built = BuiltCommitmentTransaction { transaction: modified_tx, txid };
 
 	wallet.consume_fascia(fascia.clone(), RgbTxid::from_str(&txid.to_string()).unwrap()).unwrap();
@@ -384,8 +385,8 @@ pub(crate) fn color_htlc(
 	let wallet = futures::executor::block_on(_get_rgb_wallet(ldk_data_dir));
 	let (fascia, _) = wallet.color_psbt(&mut psbt, coloring_info).unwrap();
 	let psbt = Psbt::from_str(&psbt.to_string()).unwrap();
-	let modified_tx = psbt.extract_tx();
-	let txid = &modified_tx.txid();
+	let modified_tx = psbt.extract_tx()?;
+	let txid = &modified_tx.compute_txid();
 
 	wallet.consume_fascia(fascia.clone(), RgbTxid::from_str(&txid.to_string()).unwrap()).unwrap();
 
@@ -451,9 +452,9 @@ pub(crate) fn color_closing(
 	let wallet = futures::executor::block_on(_get_rgb_wallet(ldk_data_dir));
 	let (fascia, _) = wallet.color_psbt(&mut psbt, coloring_info).unwrap();
 	let psbt = Psbt::from_str(&psbt.to_string()).unwrap();
-	let modified_tx = psbt.extract_tx();
+	let modified_tx = psbt.extract_tx()?;
 
-	let txid = &modified_tx.txid();
+	let txid = &modified_tx.compute_txid();
 	closing_transaction.built = modified_tx;
 
 	wallet.consume_fascia(fascia.clone(), RgbTxid::from_str(&txid.to_string()).unwrap()).unwrap();
