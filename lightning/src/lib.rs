@@ -191,3 +191,5 @@ extern crate backtrace;
 mod sync;
 
 pub mod rgb_utils;
+/// RGB specific extensions to the lightning library
+pub mod color_ext;
