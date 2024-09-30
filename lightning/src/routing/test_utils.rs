@@ -52,6 +52,7 @@ pub(crate) fn add_channel(
 		bitcoin_key_1: node_id_1,
 		bitcoin_key_2: node_id_2,
 		excess_data: Vec::new(),
+		contract_id: None,
 	};
 
 	let msghash = hash_to_message!(&Sha256dHash::hash(&unsigned_announcement.encode()[..])[..]);
@@ -205,6 +206,7 @@ pub(super) fn build_line_graph() -> (
 				fee_base_msat: 0,
 				fee_proportional_millionths: 0,
 				excess_data: Vec::new(),
+				htlc_maximum_rgb: 0,
 			},
 		);
 		update_channel(
@@ -223,6 +225,7 @@ pub(super) fn build_line_graph() -> (
 				fee_base_msat: 0,
 				fee_proportional_millionths: 0,
 				excess_data: Vec::new(),
+				htlc_maximum_rgb: 0,
 			},
 		);
 		add_or_update_node(
@@ -338,6 +341,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -373,6 +377,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: u32::max_value(),
 			fee_proportional_millionths: u32::max_value(),
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -391,6 +396,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -426,6 +432,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: u32::max_value(),
 			fee_proportional_millionths: u32::max_value(),
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -444,6 +451,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -479,6 +487,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -497,6 +506,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 100,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -524,6 +534,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 1000000,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -542,6 +553,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -569,6 +581,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 2000000,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -587,6 +600,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -622,6 +636,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -640,6 +655,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -667,6 +683,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -685,6 +702,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 
@@ -728,6 +746,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 1000000,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 	update_channel(
@@ -746,6 +765,7 @@ pub(super) fn build_graph() -> (
 			fee_base_msat: 0,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		},
 	);
 

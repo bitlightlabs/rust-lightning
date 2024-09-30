@@ -686,7 +686,7 @@ impl Readable for Route {
 			(1, payment_params, (option: ReadableArgs, min_final_cltv_expiry_delta)),
 			(2, blinded_tails, optional_vec),
 			(3, final_value_msat, option),
-			(5, max_total_routing_fee_msat, option)
+			(5, max_total_routing_fee_msat, option),
 			(7, rgb_payment, option)
 		});
 		let blinded_tails = blinded_tails.unwrap_or(Vec::new());

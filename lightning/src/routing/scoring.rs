@@ -2294,6 +2294,7 @@ mod tests {
 				&node_2_secret,
 			)),
 			excess_data: Vec::new(),
+			contract_id: None,
 		};
 		let msghash = hash_to_message!(&Sha256dHash::hash(&unsigned_announcement.encode()[..])[..]);
 		let signed_announcement = ChannelAnnouncement {
@@ -2329,6 +2330,7 @@ mod tests {
 			fee_base_msat: 1,
 			fee_proportional_millionths: 0,
 			excess_data: Vec::new(),
+			htlc_maximum_rgb: 0,
 		};
 		let msghash = hash_to_message!(&Sha256dHash::hash(&unsigned_update.encode()[..])[..]);
 		let signed_update = ChannelUpdate {
@@ -2349,6 +2351,7 @@ mod tests {
 			cltv_expiry_delta: 18,
 			maybe_announced_channel: true,
 			rgb_amount: None,
+			payment_amount: 0,
 		}
 	}
 
