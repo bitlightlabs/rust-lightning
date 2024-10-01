@@ -28,6 +28,7 @@ use hex::DisplayHex;
 
 use rgb_lib::RgbTransport;
 
+use crate::color_ext::{ColorSource, ColorSourceImpl};
 use crate::ln::types::{ChannelId, PaymentPreimage, PaymentHash};
 use crate::ln::features::{ChannelTypeFeatures, InitFeatures};
 use crate::ln::msgs;
@@ -1559,7 +1560,7 @@ pub(crate) struct ChannelContext<SP: Deref> where SP::Target: SignerProvider {
 	/// The consignment endpoint used to exchange the RGB consignment
 	pub(super) consignment_endpoint: Option<RgbTransport>,
 
-	pub(crate) ldk_data_dir: PathBuf,
+	pub(crate) ldk_data_dir: ColorSourceImpl,
 }
 
 impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
@@ -1895,7 +1896,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 			blocked_monitor_updates: Vec::new(),
 
 			consignment_endpoint,
-			ldk_data_dir,
+			ldk_data_dir: ldk_data_dir.into(),
 		};
 
 		Ok(channel_context)
@@ -2120,7 +2121,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 			local_initiated_shutdown: None,
 
 			consignment_endpoint,
-			ldk_data_dir,
+			ldk_data_dir: ldk_data_dir.into(),
 		})
 	}
 
@@ -2328,7 +2329,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 
 	/// Get the channel local RGB amount
 	pub fn get_local_rgb_amount(&self) -> u64 {
-		let info_file_path = get_rgb_channel_info_path(&self.channel_id.0.as_hex().to_string(), &self.ldk_data_dir, false);
+		let info_file_path = get_rgb_channel_info_path(&self.channel_id.0.as_hex().to_string(), &self.ldk_data_dir.ldk_data_dir(), false);
 		if info_file_path.exists() {
 			let rgb_info = parse_rgb_channel_info(&info_file_path);
 			rgb_info.local_rgb_amount
@@ -2339,7 +2340,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 
 	/// Get the channel remote RGB amount
 	pub fn get_remote_rgb_amount(&self) -> u64 {
-		let info_file_path = get_rgb_channel_info_path(&self.channel_id.0.as_hex().to_string(), &self.ldk_data_dir, false);
+		let info_file_path = get_rgb_channel_info_path(&self.channel_id.0.as_hex().to_string(), &self.ldk_data_dir.ldk_data_dir(), false);
 		if info_file_path.exists() {
 			let rgb_info = parse_rgb_channel_info(&info_file_path);
 			rgb_info.remote_rgb_amount

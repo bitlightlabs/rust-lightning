@@ -50,27 +50,37 @@ const OUTBOUND_EXT: &str = "outbound";
 /// RGB Lightning Node color extension trait
 pub trait ColorSource {
 	/// just for migration from legacy code
-	fn get_ldk_data_dir(&self) -> PathBuf;
+	fn ldk_data_dir(&self) -> PathBuf;
+	fn network(&self) -> BitcoinNetwork;
 }
 
 /// RGB Lightning Node color extension implementation
 pub struct ColorSourceImpl {
 	ldk_data_dir: PathBuf,
+	network: BitcoinNetwork,
 }
 
 impl ColorSource for ColorSourceImpl {
-	fn get_ldk_data_dir(&self) -> PathBuf {
+	fn ldk_data_dir(&self) -> PathBuf {
 		self.ldk_data_dir.clone()
+	}
+
+	fn network(&self) -> BitcoinNetwork {
+		self.network
 	}
 }
 
 impl From<PathBuf> for ColorSourceImpl {
 	fn from(dir: PathBuf) -> Self {
-		Self { ldk_data_dir: dir }
+		Self { ldk_data_dir: dir, network: BitcoinNetwork::Regtest }
 	}
 }
 
 impl ColorSourceImpl {
+	fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork) -> Self {
+		Self { ldk_data_dir, network }
+	}
+
 	fn _get_file_in_parent(&self, fname: &str) -> PathBuf {
 		self.ldk_data_dir.parent().unwrap().join(fname)
 	}
@@ -79,15 +89,10 @@ impl ColorSourceImpl {
 		fs::read_to_string(self._get_file_in_parent(fname)).unwrap()
 	}
 
-	fn _get_rgb_wallet_dir(&self) -> PathBuf {
-		let fingerprint = self._read_file_in_parent(WALLET_FINGERPRINT_FNAME);
-		self._get_file_in_parent(&fingerprint)
-	}
-
-	fn _get_bitcoin_network(&self) -> BitcoinNetwork {
-		let bitcoin_network = self._read_file_in_parent(BITCOIN_NETWORK_FNAME);
-		BitcoinNetwork::from_str(&bitcoin_network).unwrap()
-	}
+	// fn _get_rgb_wallet_dir(&self) -> PathBuf {
+	// 	let fingerprint = self._read_file_in_parent(WALLET_FINGERPRINT_FNAME);
+	// 	self._get_file_in_parent(&fingerprint)
+	// }
 
 	fn _get_account_xpub(&self) -> String {
 		self._read_file_in_parent(WALLET_ACCOUNT_XPUB_FNAME)
@@ -114,7 +119,7 @@ impl ColorSourceImpl {
 
 	fn _get_wallet_data(&self) -> (String, BitcoinNetwork, String) {
 		let data_dir = self.ldk_data_dir.parent().unwrap().to_string_lossy().to_string();
-		let bitcoin_network = self._get_bitcoin_network();
+		let bitcoin_network = self.network();
 		let pubkey = self._get_account_xpub();
 		(data_dir, bitcoin_network, pubkey)
 	}
