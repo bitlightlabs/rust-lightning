@@ -8,12 +8,15 @@ use crate::ln::channelmanager::{ChannelDetails, MsgHandleErrInternal};
 use crate::ln::features::ChannelTypeFeatures;
 use crate::ln::{ChannelId, PaymentHash};
 use crate::sign::SignerProvider;
+use crate::sync::Mutex;
 
 use bitcoin::blockdata::transaction::Transaction;
-use bitcoin::psbt::Psbt;
+use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::TxOut;
+use bitcoin::{TxOut, Txid};
 use hex::DisplayHex;
+use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
+use rgb_lib::Fascia;
 use rgb_lib::{
 	bitcoin::psbt::Psbt as RgbLibPsbt,
 	wallet::{
@@ -26,11 +29,13 @@ use rgb_lib::{
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Handle;
 
+use core::cell::RefCell;
 use core::ops::Deref;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use crate::rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo};
 
@@ -52,12 +57,58 @@ pub trait ColorSource {
 	/// just for migration from legacy code
 	fn ldk_data_dir(&self) -> PathBuf;
 	fn network(&self) -> BitcoinNetwork;
+	fn xpub(&self) -> String;
+}
+
+pub trait WalletProxy {
+	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String>;
+}
+
+pub struct WalletProxyImpl {}
+
+impl WalletProxy for WalletProxyImpl {
+	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String> {
+		unimplemented!()
+	}
+}
+
+impl WalletProxyImpl {
+	fn new() -> Self {
+		Self {}
+	}
+
+	pub fn color_psbt(
+		&self, psbt_to_color: &mut PartiallySignedTransaction, coloring_info: ColoringInfo,
+	) -> Result<(Fascia, AssetBeneficiariesMap), String> {
+		unimplemented!()
+	}
+}
+
+#[derive(Default)]
+pub struct ColorDatabaseImpl {
+	transfer_info: Mutex<HashMap<Txid, TransferInfo>>
+}
+
+impl ColorDatabaseImpl {
+	pub fn new() -> Self {
+		Self::default()
+	}
+	pub fn update_transfer_info(&self, txid: Txid, transfer_info: TransferInfo) {
+		self.transfer_info.lock().unwrap().insert(txid, transfer_info);
+	}
+
+	pub fn get_transfer_info(&self, txid: Txid) -> Option<TransferInfo> {
+		self.transfer_info.lock().unwrap().get(&txid).cloned()
+	}
 }
 
 /// RGB Lightning Node color extension implementation
 pub struct ColorSourceImpl {
 	ldk_data_dir: PathBuf,
 	network: BitcoinNetwork,
+	xpub: String,
+	wallet_proxy: WalletProxyImpl,
+	database: ColorDatabaseImpl,
 }
 
 impl ColorSource for ColorSourceImpl {
@@ -68,18 +119,21 @@ impl ColorSource for ColorSourceImpl {
 	fn network(&self) -> BitcoinNetwork {
 		self.network
 	}
-}
 
-impl From<PathBuf> for ColorSourceImpl {
-	fn from(dir: PathBuf) -> Self {
-		Self { ldk_data_dir: dir, network: BitcoinNetwork::Regtest }
+	fn xpub(&self) -> String {
+		self.xpub.clone()
 	}
 }
 
 impl ColorSourceImpl {
-	fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork) -> Self {
-		Self { ldk_data_dir, network }
+	fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork, xpub: String) -> Self {
+		Self { ldk_data_dir, network, xpub, wallet_proxy: WalletProxyImpl::new(), database: ColorDatabaseImpl::new() }
 	}
+
+	fn wallet_proxy(&self) -> &WalletProxyImpl {
+		&self.wallet_proxy
+	}
+	//--------------//--------------//--------------//--------------//--------------
 
 	fn _get_file_in_parent(&self, fname: &str) -> PathBuf {
 		self.ldk_data_dir.parent().unwrap().join(fname)
@@ -93,14 +147,6 @@ impl ColorSourceImpl {
 	// 	let fingerprint = self._read_file_in_parent(WALLET_FINGERPRINT_FNAME);
 	// 	self._get_file_in_parent(&fingerprint)
 	// }
-
-	fn _get_account_xpub(&self) -> String {
-		self._read_file_in_parent(WALLET_ACCOUNT_XPUB_FNAME)
-	}
-
-	fn _get_indexer_url(&self) -> String {
-		self._read_file_in_parent(INDEXER_URL_FNAME)
-	}
 
 	fn _new_rgb_wallet(
 		data_dir: String, bitcoin_network: BitcoinNetwork, pubkey: String,
@@ -120,17 +166,8 @@ impl ColorSourceImpl {
 	fn _get_wallet_data(&self) -> (String, BitcoinNetwork, String) {
 		let data_dir = self.ldk_data_dir.parent().unwrap().to_string_lossy().to_string();
 		let bitcoin_network = self.network();
-		let pubkey = self._get_account_xpub();
+		let pubkey = self.xpub();
 		(data_dir, bitcoin_network, pubkey)
-	}
-
-	async fn _get_rgb_wallet(&self) -> Wallet {
-		let (data_dir, bitcoin_network, pubkey) = self._get_wallet_data();
-		tokio::task::spawn_blocking(move || {
-			Self::_new_rgb_wallet(data_dir, bitcoin_network, pubkey)
-		})
-		.await
-		.unwrap()
 	}
 
 	async fn _accept_transfer(
@@ -148,16 +185,16 @@ impl ColorSourceImpl {
 	}
 
 	/// Read TransferInfo file
-	pub fn read_rgb_transfer_info(&self, path: &Path) -> TransferInfo {
-		let serialized_info = fs::read_to_string(path).expect("able to read transfer info file");
-		serde_json::from_str(&serialized_info).expect("valid transfer info")
-	}
+	// pub fn read_rgb_transfer_info(&self, path: &Path) -> TransferInfo {
+	// 	let serialized_info = fs::read_to_string(path).expect("able to read transfer info file");
+	// 	serde_json::from_str(&serialized_info).expect("valid transfer info")
+	// }
 
 	/// Write TransferInfo file
-	pub fn write_rgb_transfer_info(&self, path: &PathBuf, info: &TransferInfo) {
-		let serialized_info = serde_json::to_string(&info).expect("valid transfer info");
-		fs::write(path, serialized_info).expect("able to write transfer info file")
-	}
+	// pub fn write_rgb_transfer_info(&self, path: &PathBuf, info: &TransferInfo) {
+	// 	let serialized_info = serde_json::to_string(&info).expect("valid transfer info");
+	// 	fs::write(path, serialized_info).expect("able to write transfer info file")
+	// }
 
 	fn _counterparty_output_index(
 		&self, outputs: &[TxOut], channel_type_features: &ChannelTypeFeatures,
@@ -318,7 +355,8 @@ impl ColorSourceImpl {
 		let mut psbt = RgbLibPsbt::from_str(&psbt.to_string()).unwrap();
 		let handle = Handle::current();
 		let _ = handle.enter();
-		let wallet = futures::executor::block_on(self._get_rgb_wallet());
+		// let wallet = futures::executor::block_on(self._get_rgb_wallet());
+		let wallet = self.wallet_proxy();
 		let (fascia, _) = wallet.color_psbt(&mut psbt, coloring_info).unwrap();
 		let psbt = Psbt::from_str(&psbt.to_string()).unwrap();
 		let modified_tx = psbt.extract_tx();
@@ -338,8 +376,9 @@ impl ColorSourceImpl {
 			vout_p2wsh_amt + rgb_received_htlc
 		};
 		let transfer_info = TransferInfo { contract_id, rgb_amount };
-		let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
-		self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
+		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
+		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
+		self.database.update_transfer_info(txid, transfer_info);
 
 		Ok(())
 	}
@@ -354,16 +393,17 @@ impl ColorSourceImpl {
 		let htlc_amount_rgb = htlc.amount_rgb.expect("this HTLC has RGB assets");
 
 		let consignment_htlc_outpoint = htlc_tx.input.first().unwrap().previous_output;
-		let commitment_txid = consignment_htlc_outpoint.txid.to_string();
+		let commitment_txid = consignment_htlc_outpoint.txid;
 
-		let transfer_info_path = self.ldk_data_dir.join(format!("{commitment_txid}_transfer_info"));
-		let transfer_info = self.read_rgb_transfer_info(&transfer_info_path);
+		// let transfer_info_path = self.ldk_data_dir.join(format!("{commitment_txid}_transfer_info"));
+		// let transfer_info = self.read_rgb_transfer_info(&transfer_info_path);
+		let transfer_info = self.database.get_transfer_info(commitment_txid).unwrap();
 		let contract_id = transfer_info.contract_id;
 
 		let asset_coloring_info = AssetColoringInfo {
 			iface: AssetIface::RGB20,
 			input_outpoints: vec![Outpoint {
-				txid: commitment_txid,
+				txid: commitment_txid.to_string(),
 				vout: consignment_htlc_outpoint.vout,
 			}],
 			output_map: HashMap::from([(0, htlc_amount_rgb)]),
@@ -378,7 +418,7 @@ impl ColorSourceImpl {
 		let mut psbt = RgbLibPsbt::from_str(&psbt.to_string()).unwrap();
 		let handle = Handle::current();
 		let _ = handle.enter();
-		let wallet = futures::executor::block_on(self._get_rgb_wallet());
+		let wallet = self.wallet_proxy();
 		let (fascia, _) = wallet.color_psbt(&mut psbt, coloring_info).unwrap();
 		let psbt = Psbt::from_str(&psbt.to_string()).unwrap();
 		let modified_tx = psbt.extract_tx();
@@ -390,8 +430,9 @@ impl ColorSourceImpl {
 
 		// save RGB transfer data to disk
 		let transfer_info = TransferInfo { contract_id, rgb_amount: htlc_amount_rgb };
-		let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
-		self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
+		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
+		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
+		self.database.update_transfer_info(*txid, transfer_info);
 
 		Ok(())
 	}
@@ -447,7 +488,7 @@ impl ColorSourceImpl {
 		let mut psbt = RgbLibPsbt::from_str(&psbt.to_string()).unwrap();
 		let handle = Handle::current();
 		let _ = handle.enter();
-		let wallet = futures::executor::block_on(self._get_rgb_wallet());
+		let wallet = self.wallet_proxy();
 		let (fascia, _) = wallet.color_psbt(&mut psbt, coloring_info).unwrap();
 		let psbt = Psbt::from_str(&psbt.to_string()).unwrap();
 		let modified_tx = psbt.extract_tx();
@@ -461,8 +502,9 @@ impl ColorSourceImpl {
 
 		// save RGB transfer data to disk
 		let transfer_info = TransferInfo { contract_id, rgb_amount: holder_vout_amount };
-		let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
-		self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
+		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
+		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
+		self.database.update_transfer_info(*txid, transfer_info);
 
 		Ok(())
 	}
