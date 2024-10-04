@@ -14,7 +14,7 @@ use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{TxOut, Txid};
-use database::ColorDatabaseImpl;
+use database::{ColorDatabaseImpl, PaymentHashKey, ProxyIdKey};
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
 use rgb_lib::Fascia;
@@ -223,36 +223,24 @@ impl ColorSourceImpl {
 			let htlc_payment_hash = htlc.payment_hash.0.as_hex().to_string();
 			let htlc_proxy_id = format!("{}{}", chan_id, htlc_payment_hash);
 
-			// 根据 inbound 设置后缀
-			let proxy_id_key = if inbound {
-				format!("{}.inbound", htlc_proxy_id)
-			} else {
-				format!("{}.outbound", htlc_proxy_id)
-			};
-			let payment_hash_key = if inbound {
-				format!("{}.inbound", htlc_payment_hash)
-			} else {
-				format!("{}.outbound", htlc_payment_hash)
-			};
+			let proxy_id_key = ProxyIdKey::new(channel_id, &htlc.payment_hash, inbound.into());
+			let payment_hash_key  = PaymentHashKey::from(&proxy_id_key);
 
-			// 处理 Pending 状态（假设通过一个特定的键表示）
-			let pending_key = format!("{}_pending", payment_hash_key);
 			if let Some(mut rgb_payment_info) = self
 				.database
 				.rgb_payment()
 				.lock()
 				.unwrap()
-				.get_by_payment_hash(&pending_key)
+				.get_pending_payment(&htlc.payment_hash)
 				.cloned()
 			{
 				rgb_payment_info.local_rgb_amount = rgb_info.local_rgb_amount;
 				rgb_payment_info.remote_rgb_amount = rgb_info.remote_rgb_amount;
 				self.database.rgb_payment().lock().unwrap().insert(
-					proxy_id_key.clone(),
-					payment_hash_key.clone(),
+					&proxy_id_key,
 					rgb_payment_info.clone(),
+					false,
 				);
-				self.database.rgb_payment().lock().unwrap().remove(&pending_key, &pending_key);
 			}
 
 			// 获取或插入 RgbPaymentInfo
@@ -261,11 +249,11 @@ impl ColorSourceImpl {
 				.rgb_payment()
 				.lock()
 				.unwrap()
-				.get_by_proxy_id(&proxy_id_key)
+				.get_by_proxy_id_key(&proxy_id_key)
 				.cloned()
 				.unwrap_or_else(|| {
 					let info = RgbPaymentInfo {
-						contract_id: contract_id,
+						contract_id,
 						amount: htlc_amount_rgb,
 						local_rgb_amount: rgb_info.local_rgb_amount,
 						remote_rgb_amount: rgb_info.remote_rgb_amount,
@@ -273,9 +261,9 @@ impl ColorSourceImpl {
 						inbound,
 					};
 					self.database.rgb_payment().lock().unwrap().insert(
-						proxy_id_key.clone(),
-						payment_hash_key.clone(),
+						&proxy_id_key,
 						info.clone(),
+						false,
 					);
 					info
 				});
@@ -380,7 +368,14 @@ impl ColorSourceImpl {
 
 		// let transfer_info_path = self.ldk_data_dir.join(format!("{commitment_txid}_transfer_info"));
 		// let transfer_info = self.read_rgb_transfer_info(&transfer_info_path);
-		let transfer_info = self.database.transfer_info().lock().unwrap().get_by_txid(&commitment_txid).unwrap().to_owned();
+		let transfer_info = self
+			.database
+			.transfer_info()
+			.lock()
+			.unwrap()
+			.get_by_txid(&commitment_txid)
+			.unwrap()
+			.to_owned();
 		let contract_id = transfer_info.contract_id;
 
 		let asset_coloring_info = AssetColoringInfo {
@@ -490,20 +485,6 @@ impl ColorSourceImpl {
 		self.database.transfer_info().lock().unwrap().insert(*txid, transfer_info);
 
 		Ok(())
-	}
-
-	/// Get RgbPaymentInfo file path
-	pub fn get_rgb_payment_info_path(&self, payment_hash: &PaymentHash, inbound: bool) -> PathBuf {
-		let mut path = self.ldk_data_dir.join(payment_hash.0.as_hex().to_string());
-		path.set_extension(if inbound { INBOUND_EXT } else { OUTBOUND_EXT });
-		path
-	}
-
-	/// Parse RgbPaymentInfo
-	pub fn parse_rgb_payment_info(&self, rgb_payment_info_path: &PathBuf) -> RgbPaymentInfo {
-		let serialized_info =
-			fs::read_to_string(rgb_payment_info_path).expect("valid rgb payment info");
-		serde_json::from_str(&serialized_info).expect("valid rgb info file")
 	}
 
 	/// Get RgbInfo file path
@@ -698,16 +679,17 @@ impl ColorSourceImpl {
 
 	/// Whether the payment is colored
 	pub(crate) fn is_payment_rgb(&self, payment_hash: &PaymentHash) -> bool {
-		self.get_rgb_payment_info_path(payment_hash, false).exists()
-			|| self.get_rgb_payment_info_path(payment_hash, true).exists()
+		self.database.rgb_payment().lock().unwrap().get_by_payment_hash(payment_hash).is_some()
 	}
 
 	/// Detect the contract ID of the payment and then filter hops based on contract ID and amount
 	pub(crate) fn filter_first_hops(
 		&self, payment_hash: &PaymentHash, first_hops: &mut Vec<ChannelDetails>,
 	) -> (ContractId, u64) {
-		let rgb_payment_info_path = self.get_rgb_payment_info_path(payment_hash, false);
-		let rgb_payment_info = self.parse_rgb_payment_info(&rgb_payment_info_path);
+		let htlc_payment_hash = payment_hash.0.as_hex().to_string();
+		let payment_hash_key = PaymentHashKey::new(payment_hash.clone(), database::PaymentDirection::Outbound);
+		let rgb_payment_info =
+			self.database.rgb_payment().lock().unwrap().get_by_payment_hash_key(&payment_hash_key).unwrap().to_owned();
 		let contract_id = rgb_payment_info.contract_id;
 		let rgb_amount = rgb_payment_info.amount;
 		first_hops.retain(|h| {
