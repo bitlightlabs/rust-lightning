@@ -14,6 +14,7 @@ use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{TxOut, Txid};
+use database::ColorDatabaseImpl;
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
 use rgb_lib::Fascia;
@@ -32,12 +33,13 @@ use tokio::runtime::Handle;
 use core::cell::RefCell;
 use core::ops::Deref;
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo};
+
+mod database;
 
 /// Static blinding costant (will be removed in the future)
 pub const STATIC_BLINDING: u64 = 777;
@@ -82,23 +84,9 @@ impl WalletProxyImpl {
 	) -> Result<(Fascia, AssetBeneficiariesMap), String> {
 		unimplemented!()
 	}
-}
 
-#[derive(Default)]
-pub struct ColorDatabaseImpl {
-	transfer_info: Mutex<HashMap<Txid, TransferInfo>>
-}
-
-impl ColorDatabaseImpl {
-	pub fn new() -> Self {
-		Self::default()
-	}
-	pub fn update_transfer_info(&self, txid: Txid, transfer_info: TransferInfo) {
-		self.transfer_info.lock().unwrap().insert(txid, transfer_info);
-	}
-
-	pub fn get_transfer_info(&self, txid: Txid) -> Option<TransferInfo> {
-		self.transfer_info.lock().unwrap().get(&txid).cloned()
+	pub fn is_online(&self) -> bool {
+		unimplemented!()
 	}
 }
 
@@ -127,26 +115,19 @@ impl ColorSource for ColorSourceImpl {
 
 impl ColorSourceImpl {
 	fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork, xpub: String) -> Self {
-		Self { ldk_data_dir, network, xpub, wallet_proxy: WalletProxyImpl::new(), database: ColorDatabaseImpl::new() }
+		Self {
+			ldk_data_dir,
+			network,
+			xpub,
+			wallet_proxy: WalletProxyImpl::new(),
+			database: ColorDatabaseImpl::new(),
+		}
 	}
 
 	fn wallet_proxy(&self) -> &WalletProxyImpl {
 		&self.wallet_proxy
 	}
 	//--------------//--------------//--------------//--------------//--------------
-
-	fn _get_file_in_parent(&self, fname: &str) -> PathBuf {
-		self.ldk_data_dir.parent().unwrap().join(fname)
-	}
-
-	fn _read_file_in_parent(&self, fname: &str) -> String {
-		fs::read_to_string(self._get_file_in_parent(fname)).unwrap()
-	}
-
-	// fn _get_rgb_wallet_dir(&self) -> PathBuf {
-	// 	let fingerprint = self._read_file_in_parent(WALLET_FINGERPRINT_FNAME);
-	// 	self._get_file_in_parent(&fingerprint)
-	// }
 
 	fn _new_rgb_wallet(
 		data_dir: String, bitcoin_network: BitcoinNetwork, pubkey: String,
@@ -174,27 +155,17 @@ impl ColorSourceImpl {
 		&self, funding_txid: String, consignment_endpoint: RgbTransport,
 	) -> Result<(RgbTransfer, u64), RgbLibError> {
 		let (data_dir, bitcoin_network, pubkey) = self._get_wallet_data();
-		let indexer_url = self._get_indexer_url();
+		if !self.wallet_proxy().is_online() {
+			return Err(RgbLibError::Internal { details: "Wallet is offline".to_string() });
+		}
+
 		tokio::task::spawn_blocking(move || {
 			let mut wallet = Self::_new_rgb_wallet(data_dir, bitcoin_network, pubkey);
-			wallet.go_online(true, indexer_url).unwrap();
 			wallet.accept_transfer(funding_txid.clone(), 0, consignment_endpoint, STATIC_BLINDING)
 		})
 		.await
 		.unwrap()
 	}
-
-	/// Read TransferInfo file
-	// pub fn read_rgb_transfer_info(&self, path: &Path) -> TransferInfo {
-	// 	let serialized_info = fs::read_to_string(path).expect("able to read transfer info file");
-	// 	serde_json::from_str(&serialized_info).expect("valid transfer info")
-	// }
-
-	/// Write TransferInfo file
-	// pub fn write_rgb_transfer_info(&self, path: &PathBuf, info: &TransferInfo) {
-	// 	let serialized_info = serde_json::to_string(&info).expect("valid transfer info");
-	// 	fs::write(path, serialized_info).expect("able to write transfer info file")
-	// }
 
 	fn _counterparty_output_index(
 		&self, outputs: &[TxOut], channel_type_features: &ChannelTypeFeatures,
@@ -247,55 +218,67 @@ impl ColorSourceImpl {
 				continue;
 			}
 			let htlc_amount_rgb = htlc.amount_rgb.expect("this HTLC has RGB assets");
-
 			let htlc_vout = htlc.transaction_output_index.unwrap();
-
 			let inbound = htlc.offered == counterparty;
-
 			let htlc_payment_hash = htlc.payment_hash.0.as_hex().to_string();
-			let htlc_proxy_id = format!("{chan_id}{htlc_payment_hash}");
-			let mut rgb_payment_info_proxy_id_path = self.ldk_data_dir.join(htlc_proxy_id);
-			let rgb_payment_info_path = self.ldk_data_dir.join(htlc_payment_hash);
-			let mut rgb_payment_info_path = rgb_payment_info_path.clone();
-			if inbound {
-				rgb_payment_info_proxy_id_path.set_extension(INBOUND_EXT);
-				rgb_payment_info_path.set_extension(INBOUND_EXT);
-			} else {
-				rgb_payment_info_proxy_id_path.set_extension(OUTBOUND_EXT);
-				rgb_payment_info_path.set_extension(OUTBOUND_EXT);
-			}
-			let rgb_payment_info_tmp_path = self._append_pending_extension(&rgb_payment_info_path);
+			let htlc_proxy_id = format!("{}{}", chan_id, htlc_payment_hash);
 
-			if rgb_payment_info_tmp_path.exists() {
-				let mut rgb_payment_info = self.parse_rgb_payment_info(&rgb_payment_info_tmp_path);
+			// 根据 inbound 设置后缀
+			let proxy_id_key = if inbound {
+				format!("{}.inbound", htlc_proxy_id)
+			} else {
+				format!("{}.outbound", htlc_proxy_id)
+			};
+			let payment_hash_key = if inbound {
+				format!("{}.inbound", htlc_payment_hash)
+			} else {
+				format!("{}.outbound", htlc_payment_hash)
+			};
+
+			// 处理 Pending 状态（假设通过一个特定的键表示）
+			let pending_key = format!("{}_pending", payment_hash_key);
+			if let Some(mut rgb_payment_info) = self
+				.database
+				.rgb_payment()
+				.lock()
+				.unwrap()
+				.get_by_payment_hash(&pending_key)
+				.cloned()
+			{
 				rgb_payment_info.local_rgb_amount = rgb_info.local_rgb_amount;
 				rgb_payment_info.remote_rgb_amount = rgb_info.remote_rgb_amount;
-				let serialized_info =
-					serde_json::to_string(&rgb_payment_info).expect("valid rgb payment info");
-				fs::write(&rgb_payment_info_proxy_id_path, serialized_info)
-					.expect("able to write rgb payment info file");
-				fs::remove_file(rgb_payment_info_tmp_path).expect("able to remove file");
+				self.database.rgb_payment().lock().unwrap().insert(
+					proxy_id_key.clone(),
+					payment_hash_key.clone(),
+					rgb_payment_info.clone(),
+				);
+				self.database.rgb_payment().lock().unwrap().remove(&pending_key, &pending_key);
 			}
 
-			let rgb_payment_info = if rgb_payment_info_proxy_id_path.exists() {
-				self.parse_rgb_payment_info(&rgb_payment_info_proxy_id_path)
-			} else {
-				let rgb_payment_info = RgbPaymentInfo {
-					contract_id,
-					amount: htlc_amount_rgb,
-					local_rgb_amount: rgb_info.local_rgb_amount,
-					remote_rgb_amount: rgb_info.remote_rgb_amount,
-					swap_payment: true,
-					inbound,
-				};
-				let serialized_info =
-					serde_json::to_string(&rgb_payment_info).expect("valid rgb payment info");
-				fs::write(rgb_payment_info_proxy_id_path, serialized_info.clone())
-					.expect("able to write rgb payment info file");
-				fs::write(rgb_payment_info_path, serialized_info)
-					.expect("able to write rgb payment info file");
-				rgb_payment_info
-			};
+			// 获取或插入 RgbPaymentInfo
+			let rgb_payment_info = self
+				.database
+				.rgb_payment()
+				.lock()
+				.unwrap()
+				.get_by_proxy_id(&proxy_id_key)
+				.cloned()
+				.unwrap_or_else(|| {
+					let info = RgbPaymentInfo {
+						contract_id: contract_id,
+						amount: htlc_amount_rgb,
+						local_rgb_amount: rgb_info.local_rgb_amount,
+						remote_rgb_amount: rgb_info.remote_rgb_amount,
+						swap_payment: true,
+						inbound,
+					};
+					self.database.rgb_payment().lock().unwrap().insert(
+						proxy_id_key.clone(),
+						payment_hash_key.clone(),
+						info.clone(),
+					);
+					info
+				});
 
 			if inbound {
 				rgb_received_htlc += rgb_payment_info.amount
@@ -378,7 +361,7 @@ impl ColorSourceImpl {
 		let transfer_info = TransferInfo { contract_id, rgb_amount };
 		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
 		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
-		self.database.update_transfer_info(txid, transfer_info);
+		self.database.transfer_info().lock().unwrap().insert(txid, transfer_info);
 
 		Ok(())
 	}
@@ -397,7 +380,7 @@ impl ColorSourceImpl {
 
 		// let transfer_info_path = self.ldk_data_dir.join(format!("{commitment_txid}_transfer_info"));
 		// let transfer_info = self.read_rgb_transfer_info(&transfer_info_path);
-		let transfer_info = self.database.get_transfer_info(commitment_txid).unwrap();
+		let transfer_info = self.database.transfer_info().lock().unwrap().get_by_txid(&commitment_txid).unwrap().to_owned();
 		let contract_id = transfer_info.contract_id;
 
 		let asset_coloring_info = AssetColoringInfo {
@@ -432,7 +415,7 @@ impl ColorSourceImpl {
 		let transfer_info = TransferInfo { contract_id, rgb_amount: htlc_amount_rgb };
 		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
 		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
-		self.database.update_transfer_info(*txid, transfer_info);
+		self.database.transfer_info().lock().unwrap().insert(*txid, transfer_info);
 
 		Ok(())
 	}
@@ -504,7 +487,7 @@ impl ColorSourceImpl {
 		let transfer_info = TransferInfo { contract_id, rgb_amount: holder_vout_amount };
 		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
 		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
-		self.database.update_transfer_info(*txid, transfer_info);
+		self.database.transfer_info().lock().unwrap().insert(*txid, transfer_info);
 
 		Ok(())
 	}

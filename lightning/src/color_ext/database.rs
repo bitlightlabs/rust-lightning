@@ -18,20 +18,20 @@ impl RgbPaymentCache {
 		Self::default()
 	}
 
-	fn get_by_proxy_id(&self, proxy_id: &str) -> Option<&RgbPaymentInfo> {
+	pub fn get_by_proxy_id(&self, proxy_id: &str) -> Option<&RgbPaymentInfo> {
 		self.by_proxy_id.get(proxy_id)
 	}
 
-	fn get_by_payment_hash(&self, payment_hash: &str) -> Option<&RgbPaymentInfo> {
+	pub fn get_by_payment_hash(&self, payment_hash: &str) -> Option<&RgbPaymentInfo> {
 		self.by_payment_hash.get(payment_hash)
 	}
 
-	fn insert(&mut self, proxy_id: String, payment_hash: String, info: RgbPaymentInfo) {
+	pub fn insert(&mut self, proxy_id: String, payment_hash: String, info: RgbPaymentInfo) {
 		self.by_proxy_id.insert(proxy_id, info.clone());
 		self.by_payment_hash.insert(payment_hash, info);
 	}
 
-	fn remove(&mut self, proxy_id: &str, payment_hash: &str) {
+	pub fn remove(&mut self, proxy_id: &str, payment_hash: &str) {
 		self.by_proxy_id.remove(proxy_id);
 		self.by_payment_hash.remove(payment_hash);
 	}
@@ -47,15 +47,15 @@ impl TransferInfoCache {
 		Self::default()
 	}
 
-	fn get_by_txid(&self, txid: &Txid) -> Option<&TransferInfo> {
+	pub fn get_by_txid(&self, txid: &Txid) -> Option<&TransferInfo> {
 		self.by_txid.get(txid)
 	}
 
-	fn insert(&mut self, txid: Txid, info: TransferInfo) {
+	pub fn insert(&mut self, txid: Txid, info: TransferInfo) {
 		self.by_txid.insert(txid, info);
 	}
 
-	fn remove(&mut self, txid: &Txid) {
+	pub fn remove(&mut self, txid: &Txid) {
 		self.by_txid.remove(txid);
 	}
 }
