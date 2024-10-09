@@ -32,8 +32,6 @@ use core::fmt::{self, Display, Formatter};
 use core::ops::Deref;
 use core::time::Duration;
 
-use std::path::PathBuf;
-
 use crate::prelude::*;
 use crate::sync::Mutex;
 
@@ -673,15 +671,15 @@ pub(super) struct SendAlongPathArgs<'a> {
 pub(super) struct OutboundPayments {
 	pub(super) pending_outbound_payments: Mutex<HashMap<PaymentId, PendingOutboundPayment>>,
 	pub(super) retry_lock: Mutex<()>,
-	pub(super) ldk_data_dir: PathBuf,
+	pub(super) color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 impl OutboundPayments {
-	pub(super) fn new(ldk_data_dir: PathBuf) -> Self {
+	pub(super) fn new(color_source: crate::color_ext::ColorSourceWrapper) -> Self {
 		Self {
 			pending_outbound_payments: Mutex::new(new_hash_map()),
 			retry_lock: Mutex::new(()),
-			ldk_data_dir,
+			color_source,
 		}
 	}
 
@@ -807,8 +805,8 @@ impl OutboundPayments {
 		let pay_params = PaymentParameters::from_bolt12_invoice(&invoice);
 		let amount_msat = invoice.amount_msats();
 		let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();
-		let rgb_payment = is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {
-			filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)
+		let rgb_payment = self.color_source.lock().unwrap().is_payment_rgb(&payment_hash).then(|| {
+			self.color_source.lock().unwrap().filter_first_hops(&payment_hash, &mut filtered_first_hops)
 		});
 		let mut route_params = RouteParameters::from_payment_params_and_value(pay_params, amount_msat, rgb_payment);
 		if let Some(max_fee_msat) = max_total_routing_fee_msat {
@@ -846,9 +844,9 @@ impl OutboundPayments {
 			for (pmt_id, pmt) in outbounds.iter_mut() {
 				if pmt.is_auto_retryable_now() {
 					if let PendingOutboundPayment::Retryable { pending_amt_msat, total_msat, payment_params: Some(params), payment_hash, remaining_max_total_routing_fee_msat, .. } = pmt {
-						let rgb_payment_info_path = get_rgb_payment_info_path(payment_hash, &self.ldk_data_dir, false);
-						let rgb_payment = if rgb_payment_info_path.exists() {
-							let rgb_payment_info = parse_rgb_payment_info(&rgb_payment_info_path);
+						let rgb_payment_info = self.color_source.lock().unwrap().get_rgb_payment_info(payment_hash, false);
+						let rgb_payment = if rgb_payment_info.is_some() {
+							let rgb_payment_info = rgb_payment_info.unwrap();
 							Some((rgb_payment_info.contract_id, rgb_payment_info.amount))
 						} else {
 							None
@@ -925,8 +923,8 @@ impl OutboundPayments {
 		}
 
 		let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();
-		is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {
-			filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)
+		self.color_source.lock().unwrap().is_payment_rgb(&payment_hash).then(|| {
+			self.color_source.lock().unwrap().filter_first_hops( &payment_hash, &mut filtered_first_hops)
 		});
 
 		let mut route = router.find_route_with_id(
@@ -987,8 +985,8 @@ impl OutboundPayments {
 		}
 
 		let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();
-		is_payment_rgb(&self.ldk_data_dir, &payment_hash).then(|| {
-			filter_first_hops(&self.ldk_data_dir, &payment_hash, &mut filtered_first_hops)
+		self.color_source.lock().unwrap().is_payment_rgb( &payment_hash).then(|| {
+			self.color_source.lock().unwrap().filter_first_hops( &payment_hash, &mut filtered_first_hops)
 		});
 
 		let mut route = match router.find_route_with_id(

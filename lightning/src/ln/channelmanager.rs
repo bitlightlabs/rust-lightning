@@ -99,7 +99,7 @@ use crate::io;
 use crate::prelude::*;
 use core::{cmp, mem};
 use core::cell::RefCell;
-use std::path::PathBuf;
+
 use crate::io::Read;
 use crate::sync::{Arc, Mutex, RwLock, RwLockReadGuard, FairRwLock, LockTestExt, LockHeldState};
 use core::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
@@ -2117,7 +2117,7 @@ where
 
 	logger: L,
 
-	ldk_data_dir: PathBuf,
+	color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 /// Chain-related parameters used to construct a new `ChannelManager`.
@@ -3168,7 +3168,7 @@ where
 	pub fn new(
 		fee_est: F, chain_monitor: M, tx_broadcaster: T, router: R, logger: L, entropy_source: ES,
 		node_signer: NS, signer_provider: SP, config: UserConfig, params: ChainParameters,
-		current_timestamp: u32, ldk_data_dir: PathBuf
+		current_timestamp: u32, color_source: crate::color_ext::ColorSourceWrapper
 	) -> Self {
 		let mut secp_ctx = Secp256k1::new();
 		secp_ctx.seeded_randomize(&entropy_source.get_secure_random_bytes());
@@ -3186,7 +3186,7 @@ where
 
 			outbound_scid_aliases: Mutex::new(new_hash_set()),
 			pending_inbound_payments: Mutex::new(new_hash_map()),
-			pending_outbound_payments: OutboundPayments::new(ldk_data_dir.clone()),
+			pending_outbound_payments: OutboundPayments::new(color_source.clone()),
 			forward_htlcs: Mutex::new(new_hash_map()),
 			decode_update_add_htlcs: Mutex::new(new_hash_map()),
 			claimable_payments: Mutex::new(ClaimablePayments { claimable_payments: new_hash_map(), pending_claiming_payments: new_hash_map() }),
@@ -3224,7 +3224,7 @@ where
 
 			logger,
 
-			ldk_data_dir,
+			color_source,
 		}
 	}
 
@@ -3312,7 +3312,7 @@ where
 			let config = if override_config.is_some() { override_config.as_ref().unwrap() } else { &self.default_configuration };
 			match OutboundV1Channel::new(&self.fee_estimator, &self.entropy_source, &self.signer_provider, their_network_key,
 				their_features, channel_value_satoshis, push_msat, user_channel_id, config,
-				self.best_block.read().unwrap().height, outbound_scid_alias, temporary_channel_id, consignment_endpoint, self.ldk_data_dir.clone())
+				self.best_block.read().unwrap().height, outbound_scid_alias, temporary_channel_id, consignment_endpoint, self.color_source.clone())
 			{
 				Ok(res) => res,
 				Err(e) => {
@@ -4129,9 +4129,8 @@ where
 		// The top-level caller should hold the total_consistency_lock read lock.
 		debug_assert!(self.total_consistency_lock.try_write().is_err());
 
-		let rgb_payment_info_hash_path_outbound = get_rgb_payment_info_path(payment_hash, &self.ldk_data_dir, false);
-		let path = if rgb_payment_info_hash_path_outbound.exists() {
-			let rgb_payment_info = parse_rgb_payment_info(&rgb_payment_info_hash_path_outbound);
+		let rgb_payment_info =self.color_source.lock().unwrap().get_rgb_payment_info(payment_hash, false);
+		let path = if let Some(rgb_payment_info) = rgb_payment_info {
 			if rgb_payment_info.swap_payment {
 				path.clone()
 			} else {
@@ -7042,7 +7041,7 @@ where
 				InboundV1Channel::new(&self.fee_estimator, &self.entropy_source, &self.signer_provider,
 					counterparty_node_id.clone(), &self.channel_type_features(), &peer_state.latest_features,
 					&unaccepted_channel.open_channel_msg, user_channel_id, &self.default_configuration, best_block_height,
-					&self.logger, accept_0conf, self.ldk_data_dir.clone()).map_err(|err| MsgHandleErrInternal::from_chan_no_close(err, *temporary_channel_id))
+					&self.logger, accept_0conf, self.color_source.clone()).map_err(|err| MsgHandleErrInternal::from_chan_no_close(err, *temporary_channel_id))
 			},
 			_ => {
 				let err_str = "No such channel awaiting to be accepted.".to_owned();
@@ -7267,7 +7266,7 @@ where
 		let user_channel_id = u128::from_be_bytes(random_bytes);
 		let mut channel = match InboundV1Channel::new(&self.fee_estimator, &self.entropy_source, &self.signer_provider,
 			counterparty_node_id.clone(), &self.channel_type_features(), &peer_state.latest_features, msg, user_channel_id,
-			&self.default_configuration, best_block_height, &self.logger, /*is_0conf=*/false, self.ldk_data_dir.clone())
+			&self.default_configuration, best_block_height, &self.logger, /*is_0conf=*/false, self.color_source.clone())
 		{
 			Err(e) => {
 				return Err(MsgHandleErrInternal::from_chan_no_close(e, msg.common_fields.temporary_channel_id));
@@ -7353,7 +7352,7 @@ where
 				Some(ChannelPhase::UnfundedInboundV1(inbound_chan)) => {
 					let logger = WithChannelContext::from(&self.logger, &inbound_chan.context);
 					if let Some(consignment_endpoint) = &inbound_chan.context.consignment_endpoint {
-						handle_funding(&msg.temporary_channel_id, msg.funding_txid.to_string(), &self.ldk_data_dir, consignment_endpoint.clone())?;
+						&self.color_source.lock().unwrap().handle_funding(&msg.temporary_channel_id, msg.funding_txid.to_string(),  consignment_endpoint.clone())?;
 					}
 					match inbound_chan.funding_created(msg, best_block, &self.signer_provider, &&logger) {
 						Ok(res) => res,
@@ -11516,7 +11515,7 @@ where
 	pub channel_monitors: HashMap<OutPoint, &'a mut ChannelMonitor<<SP::Target as SignerProvider>::EcdsaSigner>>,
 
 	/// LDK data directory
-	pub ldk_data_dir: PathBuf,
+	pub color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 impl<'a, M: Deref, T: Deref, ES: Deref, NS: Deref, SP: Deref, F: Deref, R: Deref, L: Deref>
@@ -11535,13 +11534,13 @@ where
 	/// HashMap for you. This is primarily useful for C bindings where it is not practical to
 	/// populate a HashMap directly from C.
 	pub fn new(entropy_source: ES, node_signer: NS, signer_provider: SP, fee_estimator: F, chain_monitor: M, tx_broadcaster: T, router: R, logger: L, default_config: UserConfig,
-			mut channel_monitors: Vec<&'a mut ChannelMonitor<<SP::Target as SignerProvider>::EcdsaSigner>>, ldk_data_dir: PathBuf) -> Self {
+			mut channel_monitors: Vec<&'a mut ChannelMonitor<<SP::Target as SignerProvider>::EcdsaSigner>>, color_source: crate::color_ext::ColorSourceWrapper) -> Self {
 		Self {
 			entropy_source, node_signer, signer_provider, fee_estimator, chain_monitor, tx_broadcaster, router, logger, default_config,
 			channel_monitors: hash_map_from_iter(
 				channel_monitors.drain(..).map(|monitor| { (monitor.get_funding_txo().0, monitor) })
 			),
-			ldk_data_dir,
+			color_source,
 		}
 	}
 }
@@ -11597,7 +11596,7 @@ where
 		let mut funding_txo_to_channel_id = hash_map_with_capacity(channel_count as usize);
 		for _ in 0..channel_count {
 			let mut channel: Channel<SP> = Channel::read(reader, (
-				&args.entropy_source, &args.signer_provider, best_block_height, &provided_channel_type_features(&args.default_config), args.ldk_data_dir.clone()
+				&args.entropy_source, &args.signer_provider, best_block_height, &provided_channel_type_features(&args.default_config), args.color_source.clone()
 			))?;
 			let logger = WithChannelContext::from(&args.logger, &channel.context);
 			let funding_txo = channel.context.get_funding_txo().ok_or(DecodeError::InvalidValue)?;
@@ -11880,7 +11879,7 @@ where
 		let pending_outbounds = OutboundPayments {
 			pending_outbound_payments: Mutex::new(pending_outbound_payments.unwrap()),
 			retry_lock: Mutex::new(()),
-			ldk_data_dir: args.ldk_data_dir.clone(),
+			color_source: args.color_source.clone(),
 		};
 
 		// We have to replay (or skip, if they were completed after we wrote the `ChannelManager`)
@@ -12437,7 +12436,7 @@ where
 
 			logger: args.logger,
 			default_configuration: args.default_config,
-			ldk_data_dir: args.ldk_data_dir,
+			color_source: args.color_source,
 		};
 
 		for htlc_source in failed_htlcs.drain(..) {

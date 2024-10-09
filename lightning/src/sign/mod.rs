@@ -37,9 +37,6 @@ use bitcoin::secp256k1::All;
 use bitcoin::secp256k1::{KeyPair, PublicKey, Scalar, Secp256k1, SecretKey, Signing};
 use bitcoin::{secp256k1, Sequence, Txid, Witness};
 
-use std::path::PathBuf;
-
-use crate::rgb_utils::color_htlc;
 use crate::chain::transaction::OutPoint;
 use crate::crypto::utils::{hkdf_extract_expand_twice, sign, sign_with_aux_rand};
 use crate::ln::chan_utils;
@@ -1047,7 +1044,7 @@ pub struct InMemorySigner {
 	/// A source of random bytes.
 	entropy_source: RandomBytes,
 	/// The LDK data directory
-	ldk_data_dir: PathBuf,
+	color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 impl PartialEq for InMemorySigner {
@@ -1079,7 +1076,7 @@ impl Clone for InMemorySigner {
 			channel_value_satoshis: self.channel_value_satoshis,
 			channel_keys_id: self.channel_keys_id,
 			entropy_source: RandomBytes::new(self.get_secure_random_bytes()),
-			ldk_data_dir: self.ldk_data_dir.clone(),
+			color_source: self.color_source.clone(),
 		}
 	}
 }
@@ -1090,7 +1087,7 @@ impl InMemorySigner {
 		secp_ctx: &Secp256k1<C>, funding_key: SecretKey, revocation_base_key: SecretKey,
 		payment_key: SecretKey, delayed_payment_base_key: SecretKey, htlc_base_key: SecretKey,
 		commitment_seed: [u8; 32], channel_value_satoshis: u64, channel_keys_id: [u8; 32],
-		ldk_data_dir: PathBuf, rand_bytes_unique_start: [u8; 32],
+		color_source: crate::color_ext::ColorSourceWrapper, rand_bytes_unique_start: [u8; 32],
 	) -> InMemorySigner {
 		let holder_channel_pubkeys = InMemorySigner::make_holder_keys(
 			secp_ctx,
@@ -1112,7 +1109,7 @@ impl InMemorySigner {
 			channel_parameters: None,
 			channel_keys_id,
 			entropy_source: RandomBytes::new(rand_bytes_unique_start),
-			ldk_data_dir,
+			color_source,
 		}
 	}
 
@@ -1439,7 +1436,7 @@ impl EcdsaChannelSigner for InMemorySigner {
 				&keys.revocation_key,
 			);
 			if commitment_tx.is_colored() {
-				if let Err(_e) = color_htlc(&mut htlc_tx, htlc, &self.ldk_data_dir) {
+				if let Err(_e) = &self.color_source.lock().unwrap().color_htlc(&mut htlc_tx, htlc) {
 					return Err(())
 				}
 			}
@@ -1777,15 +1774,15 @@ impl Writeable for InMemorySigner {
 	}
 }
 
-impl<ES: Deref> ReadableArgs<(ES, PathBuf)> for InMemorySigner
+impl<ES: Deref> ReadableArgs<(ES, crate::color_ext::ColorSourceWrapper)> for InMemorySigner
 where
 	ES::Target: EntropySource,
 {
-	fn read<R: io::Read>(reader: &mut R, args: (ES, PathBuf)) -> Result<Self, DecodeError> {
+	fn read<R: io::Read>(reader: &mut R, args: (ES, crate::color_ext::ColorSourceWrapper)) -> Result<Self, DecodeError> {
 		let _ver = read_ver_prefix!(reader, SERIALIZATION_VERSION);
 
 		let entropy_source = args.0;
-		let ldk_data_dir = args.1;
+		let color_source = args.1;
 
 		let funding_key = Readable::read(reader)?;
 		let revocation_base_key = Readable::read(reader)?;
@@ -1820,7 +1817,7 @@ where
 			channel_parameters: counterparty_channel_data,
 			channel_keys_id: keys_id,
 			entropy_source: RandomBytes::new(entropy_source.get_secure_random_bytes()),
-			ldk_data_dir,
+			color_source,
 		})
 	}
 }
@@ -1856,7 +1853,7 @@ pub struct KeysManager {
 	seed: [u8; 32],
 	starting_time_secs: u64,
 	starting_time_nanos: u32,
-	ldk_data_dir: PathBuf,
+	color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 impl KeysManager {
@@ -1877,7 +1874,7 @@ impl KeysManager {
 	/// for any channel, and some on-chain during-closing funds.
 	///
 	/// [`ChannelMonitor`]: crate::chain::channelmonitor::ChannelMonitor
-	pub fn new(seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32, ldk_data_dir: PathBuf) -> Self {
+	pub fn new(seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32, color_source: crate::color_ext::ColorSourceWrapper) -> Self {
 		let secp_ctx = Secp256k1::new();
 		// Note that when we aren't serializing the key, network doesn't matter
 		match ExtendedPrivKey::new_master(Network::Testnet, seed) {
@@ -1947,7 +1944,7 @@ impl KeysManager {
 					seed: *seed,
 					starting_time_secs,
 					starting_time_nanos,
-					ldk_data_dir,
+					color_source,
 				};
 				let secp_seed = res.get_secure_random_bytes();
 				res.secp_ctx.seeded_randomize(&secp_seed);
@@ -2019,7 +2016,7 @@ impl KeysManager {
 			commitment_seed,
 			channel_value_satoshis,
 			params.clone(),
-			self.ldk_data_dir.clone(),
+			self.color_source.clone(),
 			prng_seed,
 		)
 	}
@@ -2288,7 +2285,7 @@ impl SignerProvider for KeysManager {
 	}
 
 	fn read_chan_signer(&self, reader: &[u8]) -> Result<Self::EcdsaSigner, DecodeError> {
-		InMemorySigner::read(&mut io::Cursor::new(reader), (self, self.ldk_data_dir.clone()))
+		InMemorySigner::read(&mut io::Cursor::new(reader), (self, self.color_source.clone()))
 	}
 
 	fn get_destination_script(&self, _channel_keys_id: [u8; 32]) -> Result<ScriptBuf, ()> {
@@ -2453,9 +2450,9 @@ impl PhantomKeysManager {
 	/// [phantom node payments]: PhantomKeysManager
 	pub fn new(
 		seed: &[u8; 32], starting_time_secs: u64, starting_time_nanos: u32,
-		cross_node_seed: &[u8; 32], ldk_data_dir: PathBuf,
+		cross_node_seed: &[u8; 32], color_source: crate::color_ext::ColorSourceWrapper,
 	) -> Self {
-		let inner = KeysManager::new(seed, starting_time_secs, starting_time_nanos, ldk_data_dir);
+		let inner = KeysManager::new(seed, starting_time_secs, starting_time_nanos, color_source);
 		let (inbound_key, phantom_key) = hkdf_extract_expand_twice(
 			b"LDK Inbound and Phantom Payment Key Expansion",
 			cross_node_seed,

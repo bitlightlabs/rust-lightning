@@ -42,7 +42,6 @@ use crate::chain::BestBlock;
 use crate::chain::chaininterface::{FeeEstimator, ConfirmationTarget, LowerBoundedFeeEstimator};
 use crate::chain::channelmonitor::{ChannelMonitor, ChannelMonitorUpdate, ChannelMonitorUpdateStep, LATENCY_GRACE_PERIOD_BLOCKS, CLOSED_CHANNEL_UPDATE_ID};
 use crate::chain::transaction::{OutPoint, TransactionData};
-use crate::rgb_utils::{color_closing, color_commitment, color_htlc, get_rgb_channel_info_path, get_rgb_channel_info_pending, op_return_position, parse_rgb_channel_info, rename_rgb_files, update_rgb_channel_amount_pending};
 use crate::sign::ecdsa::{EcdsaChannelSigner, WriteableEcdsaChannelSigner};
 use crate::sign::{EntropySource, ChannelSigner, SignerProvider, NodeSigner, Recipient};
 use crate::events::ClosureReason;
@@ -57,7 +56,7 @@ use crate::io;
 use crate::prelude::*;
 use core::{cmp,mem,fmt};
 use core::ops::Deref;
-use std::path::PathBuf;
+
 #[cfg(any(test, fuzzing, debug_assertions))]
 use crate::sync::Mutex;
 use crate::sign::type_resolver::ChannelSignerType;
@@ -1560,7 +1559,7 @@ pub(crate) struct ChannelContext<SP: Deref> where SP::Target: SignerProvider {
 	/// The consignment endpoint used to exchange the RGB consignment
 	pub(super) consignment_endpoint: Option<RgbTransport>,
 
-	pub(crate) ldk_data_dir: ColorSourceImpl,
+	pub(crate) color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
@@ -1583,7 +1582,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 		msg_push_msat: u64,
 		open_channel_fields: msgs::CommonOpenChannelFields,
 		consignment_endpoint: Option<RgbTransport>,
-		ldk_data_dir: PathBuf,
+		color_source: crate::color_ext::ColorSourceWrapper,
 	) -> Result<ChannelContext<SP>, ChannelError>
 		where
 			ES::Target: EntropySource,
@@ -1896,7 +1895,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 			blocked_monitor_updates: Vec::new(),
 
 			consignment_endpoint,
-			ldk_data_dir: ldk_data_dir.into(),
+			color_source,
 		};
 
 		Ok(channel_context)
@@ -1920,7 +1919,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 		holder_signer: <SP::Target as SignerProvider>::EcdsaSigner,
 		pubkeys: ChannelPublicKeys,
 		consignment_endpoint: Option<RgbTransport>,
-		ldk_data_dir: PathBuf,
+		color_source: crate::color_ext::ColorSourceWrapper,
 	) -> Result<ChannelContext<SP>, APIError>
 		where
 			ES::Target: EntropySource,
@@ -2121,7 +2120,7 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 			local_initiated_shutdown: None,
 
 			consignment_endpoint,
-			ldk_data_dir: ldk_data_dir.into(),
+			color_source: color_source.into(),
 		})
 	}
 
@@ -2329,9 +2328,8 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 
 	/// Get the channel local RGB amount
 	pub fn get_local_rgb_amount(&self) -> u64 {
-		let info_file_path = get_rgb_channel_info_path(&self.channel_id.0.as_hex().to_string(), &self.ldk_data_dir.ldk_data_dir(), false);
-		if info_file_path.exists() {
-			let rgb_info = parse_rgb_channel_info(&info_file_path);
+		let rgb_info = self.color_source.lock().unwrap().get_rgb_channel_info(&self.channel_id, false).0;
+		if let Some(rgb_info) = rgb_info {
 			rgb_info.local_rgb_amount
 		} else {
 			0
@@ -2340,9 +2338,8 @@ impl<SP: Deref> ChannelContext<SP> where SP::Target: SignerProvider  {
 
 	/// Get the channel remote RGB amount
 	pub fn get_remote_rgb_amount(&self) -> u64 {
-		let info_file_path = get_rgb_channel_info_path(&self.channel_id.0.as_hex().to_string(), &self.ldk_data_dir.ldk_data_dir(), false);
-		if info_file_path.exists() {
-			let rgb_info = parse_rgb_channel_info(&info_file_path);
+		let rgb_info = self.color_source.lock().unwrap().get_rgb_channel_info(&self.channel_id, false).0;
+		if let Some(rgb_info) = rgb_info {
 			rgb_info.remote_rgb_amount
 		} else {
 			0
@@ -3822,7 +3819,7 @@ impl<SP: Deref> Channel<SP> where
 
 		let mut closing_transaction = ClosingTransaction::new(value_to_holder as u64, value_to_counterparty as u64, holder_shutdown_script, counterparty_shutdown_script, funding_outpoint);
 		if self.context.is_colored() {
-			color_closing(&self.context.channel_id, &self.context.channel_transaction_parameters.funding_outpoint.unwrap(), &mut closing_transaction, &self.context.ldk_data_dir)
+			&self.context.color_source.lock().unwrap().color_closing(&self.context.channel_id, &self.context.channel_transaction_parameters.funding_outpoint.unwrap(), &mut closing_transaction, )
 				.expect("successful closing TX coloring");
 		}
 		(closing_transaction, total_fee_satoshis)
@@ -4451,7 +4448,7 @@ impl<SP: Deref> Channel<SP> where
 
 		let mut commitment_stats = self.context.build_commitment_transaction(self.context.cur_holder_commitment_transaction_number, &keys, true, false, logger);
 		if self.context.is_colored() {
-			color_commitment(&self.context, &mut commitment_stats.tx, false)?;
+			&self.context.color_source.lock().unwrap().color_commitment(&self.context, &mut commitment_stats.tx, false)?;
 		}
 		let commitment_txid = {
 			let trusted_tx = commitment_stats.tx.trust();
@@ -4526,7 +4523,7 @@ impl<SP: Deref> Channel<SP> where
 					self.context.get_counterparty_selected_contest_delay().unwrap(), &htlc, &self.context.channel_type,
 					&keys.broadcaster_delayed_payment_key, &keys.revocation_key);
 				if self.context.is_colored() {
-					color_htlc(&mut htlc_tx, &htlc, &self.context.ldk_data_dir)?;
+					&self.context.color_source.lock().unwrap().color_htlc(&mut htlc_tx, &htlc, )?;
 				}
 
 				let htlc_redeemscript = chan_utils::get_htlc_redeemscript(&htlc, &self.context.channel_type, &keys);
@@ -5001,7 +4998,7 @@ impl<SP: Deref> Channel<SP> where
 		}
 		self.context.value_to_self_msat = (self.context.value_to_self_msat as i64 + value_to_self_msat_diff) as u64;
 		if self.context.is_colored() && (rgb_offered_htlc > 0 || rgb_received_htlc > 0) {
-			update_rgb_channel_amount_pending(&self.context.channel_id, rgb_offered_htlc, rgb_received_htlc, &self.context.ldk_data_dir);
+			&self.context.color_source.lock().unwrap().update_rgb_channel_amount_pending(&self.context.channel_id, rgb_offered_htlc, rgb_received_htlc, );
 		}
 
 		if let Some((feerate, update_state)) = self.context.pending_update_fee {
@@ -5144,7 +5141,7 @@ impl<SP: Deref> Channel<SP> where
 		let keys = self.context.build_holder_transaction_keys(self.context.cur_holder_commitment_transaction_number);
 		let mut commitment_stats = self.context.build_commitment_transaction(self.context.cur_holder_commitment_transaction_number, &keys, true, true, logger);
 		if self.context.is_colored() {
-			if let Err(e) = color_commitment(&self.context, &mut commitment_stats.tx, false) {
+			if let Err(e) = &self.context.color_source.lock().unwrap().color_commitment(&self.context, &mut commitment_stats.tx, false) {
 				log_error!(logger, "Cannot color commitment: {e:?}");
 				return None;
 			}
@@ -6058,7 +6055,7 @@ impl<SP: Deref> Channel<SP> where
 		};
 
 		let closing_transaction = closing_tx.trust().built_transaction();
-		let op_return_position = op_return_position(closing_transaction);
+		let op_return_position = ColorSourceImpl::op_return_position(closing_transaction);
 		for (idx, outp) in closing_transaction.output.iter().enumerate() {
 			if Some(idx) != op_return_position && !outp.script_pubkey.is_witness_program() && outp.value < MAX_STD_OUTPUT_DUST_LIMIT_SATOSHIS {
 				return Err(ChannelError::Close("Remote sent us a closing_signed with a dust output. Always use segwit closing scripts!".to_owned()));
@@ -6812,8 +6809,8 @@ impl<SP: Deref> Channel<SP> where
 		let were_node_one = node_id.as_slice() < counterparty_node_id.as_slice();
 
 		let contract_id = if self.context.is_colored() {
-			let (rgb_info, _) = get_rgb_channel_info_pending(&self.context.channel_id, &self.context.ldk_data_dir);
-			Some(rgb_info.contract_id)
+			let (rgb_info, _) = self.context.color_source.lock().unwrap().get_rgb_channel_info_pending(&self.context.channel_id);
+			Some(rgb_info.unwrap().contract_id)
 		} else {
 			None
 		};
@@ -7208,7 +7205,7 @@ impl<SP: Deref> Channel<SP> where
 			}
 		}
 		if self.context.is_colored() && rgb_received_htlc > 0 {
-			update_rgb_channel_amount_pending(&self.context.channel_id, 0, rgb_received_htlc, &self.context.ldk_data_dir);
+			&self.context.color_source.lock().unwrap().update_rgb_channel_amount_pending(&self.context.channel_id, 0, rgb_received_htlc,);
 		}
 		if let Some((feerate, update_state)) = self.context.pending_update_fee {
 			if update_state == FeeUpdateState::AwaitingRemoteRevokeToAnnounce {
@@ -7256,7 +7253,7 @@ impl<SP: Deref> Channel<SP> where
 		let counterparty_keys = self.context.build_remote_transaction_keys();
 		let mut commitment_stats = self.context.build_commitment_transaction(self.context.cur_counterparty_commitment_transaction_number, &counterparty_keys, false, true, logger);
 		if self.context.is_colored() {
-			color_commitment(&self.context, &mut commitment_stats.tx, true).expect("successful commitment coloring");
+			&self.context.color_source.lock().unwrap().color_commitment(&self.context, &mut commitment_stats.tx, true).expect("successful commitment coloring");
 		}
 		let counterparty_commitment_tx = commitment_stats.tx;
 
@@ -7291,7 +7288,7 @@ impl<SP: Deref> Channel<SP> where
 		let counterparty_keys = self.context.build_remote_transaction_keys();
 		let mut commitment_stats = self.context.build_commitment_transaction(self.context.cur_counterparty_commitment_transaction_number, &counterparty_keys, false, true, logger);
 		if self.context.is_colored() {
-			color_commitment(&self.context, &mut commitment_stats.tx, true)?;
+			&self.context.color_source.lock().unwrap().color_commitment(&self.context, &mut commitment_stats.tx, true)?;
 		}
 		let counterparty_commitment_txid = commitment_stats.tx.trust().txid();
 
@@ -7497,7 +7494,7 @@ impl<SP: Deref> OutboundV1Channel<SP> where SP::Target: SignerProvider {
 	pub fn new<ES: Deref, F: Deref>(
 		fee_estimator: &LowerBoundedFeeEstimator<F>, entropy_source: &ES, signer_provider: &SP, counterparty_node_id: PublicKey, their_features: &InitFeatures,
 		channel_value_satoshis: u64, push_msat: u64, user_id: u128, config: &UserConfig, current_chain_height: u32,
-		outbound_scid_alias: u64, temporary_channel_id: Option<ChannelId>, consignment_endpoint: Option<RgbTransport>, ldk_data_dir: PathBuf,
+		outbound_scid_alias: u64, temporary_channel_id: Option<ChannelId>, consignment_endpoint: Option<RgbTransport>, color_source: crate::color_ext::ColorSourceWrapper,
 	) -> Result<OutboundV1Channel<SP>, APIError>
 	where ES::Target: EntropySource,
 	      F::Target: FeeEstimator
@@ -7533,7 +7530,7 @@ impl<SP: Deref> OutboundV1Channel<SP> where SP::Target: SignerProvider {
 				holder_signer,
 				pubkeys,
 				consignment_endpoint,
-				ldk_data_dir,
+				color_source,
 			)?,
 			unfunded_context: UnfundedChannelContext { unfunded_channel_age_ticks: 0 }
 		};
@@ -7545,7 +7542,7 @@ impl<SP: Deref> OutboundV1Channel<SP> where SP::Target: SignerProvider {
 		let counterparty_keys = self.context.build_remote_transaction_keys();
 		let mut counterparty_initial_commitment_tx = self.context.build_commitment_transaction(self.context.cur_counterparty_commitment_transaction_number, &counterparty_keys, false, false, logger).tx;
 		if self.context.is_colored() {
-			color_commitment(&self.context, &mut counterparty_initial_commitment_tx, true).unwrap();
+			&self.context.color_source.lock().unwrap().color_commitment(&self.context, &mut counterparty_initial_commitment_tx, true).unwrap();
 		}
 		let signature = match &self.context.holder_signer {
 			// TODO (taproot|arik): move match into calling method for Taproot
@@ -7608,7 +7605,7 @@ impl<SP: Deref> OutboundV1Channel<SP> where SP::Target: SignerProvider {
 		let temporary_channel_id = self.context.channel_id;
 		self.context.channel_id = ChannelId::v1_from_funding_outpoint(funding_txo);
 		if self.context.is_colored() {
-			rename_rgb_files(&self.context.channel_id, &temporary_channel_id, &self.context.ldk_data_dir);
+			&self.context.color_source.lock().unwrap().rename_rgb_files(&self.context.channel_id, &temporary_channel_id);
 		}
 
 		// If the funding transaction is a coinbase transaction, we need to set the minimum depth to 100.
@@ -7905,7 +7902,7 @@ impl<SP: Deref> OutboundV1Channel<SP> where SP::Target: SignerProvider {
 		                                          funding_redeemscript.clone(), self.context.channel_value_satoshis,
 		                                          obscure_factor,
 		                                          holder_commitment_tx, best_block, self.context.counterparty_node_id, self.context.channel_id(),
-												  self.context.ldk_data_dir.clone());
+												  self.context.color_source.clone());
 		channel_monitor.provide_initial_counterparty_commitment_tx(
 			counterparty_initial_bitcoin_tx.txid, Vec::new(),
 			self.context.cur_counterparty_commitment_transaction_number,
@@ -7995,7 +7992,7 @@ impl<SP: Deref> InboundV1Channel<SP> where SP::Target: SignerProvider {
 		fee_estimator: &LowerBoundedFeeEstimator<F>, entropy_source: &ES, signer_provider: &SP,
 		counterparty_node_id: PublicKey, our_supported_features: &ChannelTypeFeatures,
 		their_features: &InitFeatures, msg: &msgs::OpenChannel, user_id: u128, config: &UserConfig,
-		current_chain_height: u32, logger: &L, is_0conf: bool, ldk_data_dir: PathBuf
+		current_chain_height: u32, logger: &L, is_0conf: bool, color_source: crate::color_ext::ColorSourceWrapper
 	) -> Result<InboundV1Channel<SP>, ChannelError>
 		where ES::Target: EntropySource,
 			  F::Target: FeeEstimator,
@@ -8038,7 +8035,7 @@ impl<SP: Deref> InboundV1Channel<SP> where SP::Target: SignerProvider {
 				msg.common_fields.clone(),
 
 				msg.common_fields.consignment_endpoint.clone(),
-				ldk_data_dir,
+				color_source,
 			)?,
 			unfunded_context: UnfundedChannelContext { unfunded_channel_age_ticks: 0 }
 		};
@@ -8117,7 +8114,7 @@ impl<SP: Deref> InboundV1Channel<SP> where SP::Target: SignerProvider {
 		let keys = self.context.build_holder_transaction_keys(self.context.cur_holder_commitment_transaction_number);
 		let mut initial_commitment_tx = self.context.build_commitment_transaction(self.context.cur_holder_commitment_transaction_number, &keys, true, false, logger).tx;
 		if self.context.is_colored() {
-			color_commitment(&self.context, &mut initial_commitment_tx, false)?;
+			&self.context.color_source.lock().unwrap().color_commitment(&self.context, &mut initial_commitment_tx, false)?;
 		}
 		let trusted_tx = initial_commitment_tx.trust();
 		let initial_commitment_bitcoin_tx = trusted_tx.built_transaction();
@@ -8193,7 +8190,7 @@ impl<SP: Deref> InboundV1Channel<SP> where SP::Target: SignerProvider {
 		let temporary_channel_id = self.context.channel_id;
 		self.context.channel_id = ChannelId::v1_from_funding_outpoint(funding_txo);
 		if self.context.is_colored() {
-			rename_rgb_files(&self.context.channel_id, &temporary_channel_id, &self.context.ldk_data_dir);
+			&self.context.color_source.lock().unwrap().rename_rgb_files(&self.context.channel_id, &temporary_channel_id);
 		}
 		self.context.cur_counterparty_commitment_transaction_number -= 1;
 		self.context.cur_holder_commitment_transaction_number -= 1;
@@ -8212,7 +8209,7 @@ impl<SP: Deref> InboundV1Channel<SP> where SP::Target: SignerProvider {
 		                                          &self.context.channel_transaction_parameters,
 		                                          funding_redeemscript.clone(), self.context.channel_value_satoshis,
 		                                          obscure_factor,
-		                                          holder_commitment_tx, best_block, self.context.counterparty_node_id, self.context.channel_id(), self.context.ldk_data_dir.clone());
+		                                          holder_commitment_tx, best_block, self.context.counterparty_node_id, self.context.channel_id(), self.context.color_source.clone());
 		channel_monitor.provide_initial_counterparty_commitment_tx(
 			counterparty_initial_commitment_tx.trust().txid(), Vec::new(),
 			self.context.cur_counterparty_commitment_transaction_number + 1,
@@ -8970,13 +8967,13 @@ impl<SP: Deref> Writeable for Channel<SP> where SP::Target: SignerProvider {
 }
 
 const MAX_ALLOC_SIZE: usize = 64*1024;
-impl<'a, 'b, 'c, ES: Deref, SP: Deref> ReadableArgs<(&'a ES, &'b SP, u32, &'c ChannelTypeFeatures, PathBuf)> for Channel<SP>
+impl<'a, 'b, 'c, ES: Deref, SP: Deref> ReadableArgs<(&'a ES, &'b SP, u32, &'c ChannelTypeFeatures, crate::color_ext::ColorSourceWrapper)> for Channel<SP>
 		where
 			ES::Target: EntropySource,
 			SP::Target: SignerProvider
 {
-	fn read<R : io::Read>(reader: &mut R, args: (&'a ES, &'b SP, u32, &'c ChannelTypeFeatures, PathBuf)) -> Result<Self, DecodeError> {
-		let (entropy_source, signer_provider, serialized_height, our_supported_features, ldk_data_dir) = args;
+	fn read<R : io::Read>(reader: &mut R, args: (&'a ES, &'b SP, u32, &'c ChannelTypeFeatures, crate::color_ext::ColorSourceWrapper)) -> Result<Self, DecodeError> {
+		let (entropy_source, signer_provider, serialized_height, our_supported_features, color_source) = args;
 		let ver = read_ver_prefix!(reader, SERIALIZATION_VERSION);
 
 		// `user_id` used to be a single u64 value. In order to remain backwards compatible with
@@ -9545,7 +9542,7 @@ impl<'a, 'b, 'c, ES: Deref, SP: Deref> ReadableArgs<(&'a ES, &'b SP, u32, &'c Ch
 				blocked_monitor_updates: blocked_monitor_updates.unwrap(),
 
 				consignment_endpoint,
-				ldk_data_dir,
+				color_source,
 			},
 			#[cfg(any(dual_funding, splicing))]
 			dual_funding_channel_context: None,
