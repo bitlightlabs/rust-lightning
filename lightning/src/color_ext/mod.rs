@@ -65,6 +65,7 @@ pub trait WalletProxy {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String>;
 }
 
+#[derive(Debug)]
 pub struct WalletProxyImpl {}
 
 impl WalletProxy for WalletProxyImpl {
@@ -90,6 +91,7 @@ impl WalletProxyImpl {
 }
 
 /// RGB Lightning Node color extension implementation
+#[derive(Debug)]
 pub struct ColorSourceImpl {
 	ldk_data_dir: PathBuf,
 	network: BitcoinNetwork,
@@ -180,13 +182,13 @@ impl ColorSourceImpl {
 	}
 
 	/// Return the position of the OP_RETURN output, if present
-	pub fn op_return_position(&self, tx: &Transaction) -> Option<usize> {
+	pub fn op_return_position(tx: &Transaction) -> Option<usize> {
 		tx.output.iter().position(|o| o.script_pubkey.is_op_return())
 	}
 
 	/// Whether the transaction is colored (i.e. it has an OP_RETURN output)
 	pub fn is_tx_colored(&self, tx: &Transaction) -> bool {
-		self.op_return_position(tx).is_some()
+		ColorSourceImpl::op_return_position(tx).is_some()
 	}
 
 	/// Color commitment transaction
@@ -575,7 +577,11 @@ impl ColorSourceImpl {
 		let funding_txid = Txid::from_str(&funding_txid).unwrap();
 		let mut consignment_data = ConsignmentBinaryData::default();
 		consignment.save(&mut consignment_data);
-		self.database.consignment().lock().unwrap().insert(temporary_channel_id, funding_txid, consignment_data);
+		self.database.consignment().lock().unwrap().insert(
+			temporary_channel_id,
+			funding_txid,
+			consignment_data,
+		);
 
 		let rgb_info = RgbInfo {
 			contract_id: consignment.contract_id(),
@@ -621,6 +627,24 @@ impl ColorSourceImpl {
 	/// Whether the payment is colored
 	pub(crate) fn is_payment_rgb(&self, payment_hash: &PaymentHash) -> bool {
 		self.database.rgb_payment().lock().unwrap().get_by_payment_hash(payment_hash).is_some()
+	}
+
+	pub fn get_rgb_payment_info(
+		&self, payment_hash: &PaymentHash, inbound: bool,
+	) -> Option<RgbPaymentInfo> {
+		self.database
+			.rgb_payment()
+			.lock()
+			.unwrap()
+			.get_by_payment_hash_key(&PaymentHashKey::new(
+				payment_hash.clone(),
+				if inbound {
+					database::PaymentDirection::Inbound
+				} else {
+					database::PaymentDirection::Outbound
+				},
+			))
+			.map(|i| i.clone())
 	}
 
 	/// Detect the contract ID of the payment and then filter hops based on contract ID and amount

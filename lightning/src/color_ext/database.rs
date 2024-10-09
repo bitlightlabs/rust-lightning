@@ -269,6 +269,7 @@ impl ConsignmentCache {
 }
 
 #[derive(Default)]
+#[derive(Debug)]
 pub struct ColorDatabaseImpl {
 	rgb_payment_cache: Arc<Mutex<RgbPaymentCache>>,
 	transfer_info: Arc<Mutex<TransferInfoCache>>,
