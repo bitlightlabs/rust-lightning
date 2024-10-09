@@ -32,6 +32,7 @@ use core::ops::Deref;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 use crate::rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo};
 
@@ -57,6 +58,8 @@ pub trait ColorSource {
 	fn network(&self) -> BitcoinNetwork;
 	fn xpub(&self) -> String;
 }
+
+pub type ColorSourceWrapper = Arc<Mutex<ColorSourceImpl>>;
 
 pub trait WalletProxy {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String>;
