@@ -1676,7 +1676,7 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 	/// This function is only valid in the holder commitment context, it always uses EcdsaSighashType::All.
 	pub fn get_htlc_sigs<T: secp256k1::Signing, ES: Deref>(
 		&self, htlc_base_key: &SecretKey, channel_parameters: &DirectedChannelTransactionParameters,
-		entropy_source: &ES, secp_ctx: &Secp256k1<T>, ldk_data_dir: &PathBuf,
+		entropy_source: &ES, secp_ctx: &Secp256k1<T>, color_source: crate::color_ext::ColorSourceWrapper,
 	) -> Result<Vec<Signature>, ()> where ES::Target: EntropySource {
 		let inner = self.inner;
 		let keys = &inner.keys;
@@ -1688,7 +1688,7 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 			assert!(this_htlc.transaction_output_index.is_some());
 			let mut htlc_tx = build_htlc_transaction(&txid, inner.feerate_per_kw, channel_parameters.contest_delay(), &this_htlc, &self.channel_type_features, &keys.broadcaster_delayed_payment_key, &keys.revocation_key);
 			if inner.is_colored() {
-				if let Err(_e) = color_htlc(&mut htlc_tx, this_htlc, ldk_data_dir) {
+				if let Err(_e) = color_source.lock().unwrap().color_htlc(&mut htlc_tx, this_htlc) {
 					return Err(());
 				}
 			}
@@ -1704,7 +1704,7 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 	/// Builds the second-level holder HTLC transaction for the HTLC with index `htlc_index`.
 	pub(crate) fn build_unsigned_htlc_tx(
 		&self, channel_parameters: &DirectedChannelTransactionParameters, htlc_index: usize,
-		preimage: &Option<PaymentPreimage>, ldk_data_dir: &PathBuf
+		preimage: &Option<PaymentPreimage>, color_source: crate::color_ext::ColorSourceWrapper
 	) -> Transaction {
 		let keys = &self.inner.keys;
 		let this_htlc = &self.inner.htlcs[htlc_index];
@@ -1719,7 +1719,7 @@ impl<'a> TrustedCommitmentTransaction<'a> {
 			&self.channel_type_features, &keys.broadcaster_delayed_payment_key, &keys.revocation_key
 		);
 		if self.inner.is_colored() {
-			color_htlc(&mut htlc_tx, this_htlc, ldk_data_dir).expect("successful htlc tx coloring");
+			color_source.lock().unwrap().color_htlc(&mut htlc_tx, this_htlc).expect("successful htlc tx coloring");
 		}
 		htlc_tx
 	}
