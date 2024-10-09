@@ -8,13 +8,12 @@ use crate::ln::channelmanager::{ChannelDetails, MsgHandleErrInternal};
 use crate::ln::features::ChannelTypeFeatures;
 use crate::ln::{ChannelId, PaymentHash};
 use crate::sign::SignerProvider;
-use crate::sync::Mutex;
 
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::{TxOut, Txid};
-use database::{ColorDatabaseImpl, PaymentHashKey, ProxyIdKey};
+use bitcoin::TxOut;
+use database::{ColorDatabaseImpl, PaymentHashKey, ProxyIdKey, RgbInfoKey};
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
 use rgb_lib::Fascia;
@@ -27,15 +26,12 @@ use rgb_lib::{
 	BitcoinNetwork, ConsignmentExt, ContractId, Error as RgbLibError, FileContent, RgbTransfer,
 	RgbTransport, RgbTxid, Wallet,
 };
-use serde::{Deserialize, Serialize};
 use tokio::runtime::Handle;
 
-use core::cell::RefCell;
 use core::ops::Deref;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo};
 
@@ -205,6 +201,11 @@ impl ColorSourceImpl {
 		let commitment_tx = commitment_transaction.clone().built.transaction;
 
 		let (rgb_info, _) = self.get_rgb_channel_info_pending(channel_id);
+		if rgb_info.is_none() {
+			return Err(ChannelError::Close("RgbInfo lost".to_string()));
+		}
+
+		let rgb_info = rgb_info.unwrap();
 		let contract_id = rgb_info.contract_id;
 
 		let chan_id = channel_id.0.as_hex();
@@ -220,11 +221,11 @@ impl ColorSourceImpl {
 			let htlc_amount_rgb = htlc.amount_rgb.expect("this HTLC has RGB assets");
 			let htlc_vout = htlc.transaction_output_index.unwrap();
 			let inbound = htlc.offered == counterparty;
-			let htlc_payment_hash = htlc.payment_hash.0.as_hex().to_string();
+			let htlc_payment_hash = htlc.payment_hash;
 			let htlc_proxy_id = format!("{}{}", chan_id, htlc_payment_hash);
 
 			let proxy_id_key = ProxyIdKey::new(channel_id, &htlc.payment_hash, inbound.into());
-			let payment_hash_key  = PaymentHashKey::from(&proxy_id_key);
+			let payment_hash_key = PaymentHashKey::from(&proxy_id_key);
 
 			if let Some(mut rgb_payment_info) = self
 				.database
@@ -423,6 +424,11 @@ impl ColorSourceImpl {
 		let closing_tx = closing_transaction.clone().built;
 
 		let (rgb_info, _) = self.get_rgb_channel_info_pending(channel_id);
+		if rgb_info.is_none() {
+			return Err(ChannelError::Close("RgbInfo lost".to_string()));
+		}
+
+		let rgb_info = rgb_info.unwrap();
 		let contract_id = rgb_info.contract_id;
 
 		let holder_vout_amount = rgb_info.local_rgb_amount;
@@ -487,45 +493,32 @@ impl ColorSourceImpl {
 		Ok(())
 	}
 
-	/// Get RgbInfo file path
-	pub fn get_rgb_channel_info_path(&self, channel_id: &str, pending: bool) -> PathBuf {
-		let mut info_file_path = self.ldk_data_dir.join(channel_id);
-		if pending {
-			info_file_path.set_extension("pending");
-		}
-		info_file_path
-	}
-
 	/// Get RgbInfo file
 	pub(crate) fn get_rgb_channel_info(
-		&self, channel_id: &str, pending: bool,
-	) -> (RgbInfo, PathBuf) {
-		let info_file_path = self.get_rgb_channel_info_path(channel_id, pending);
-		let info = self.parse_rgb_channel_info(&info_file_path);
-		(info, info_file_path)
+		&self, channel_id: &ChannelId, pending: bool,
+	) -> (Option<RgbInfo>, RgbInfoKey) {
+		let key = RgbInfoKey::new(channel_id, pending);
+		let info =
+			self.database.rgb_info().lock().unwrap().get_by_rgb_info_key(&key).map(|i| i.clone());
+		(info, key)
 	}
 
 	/// Get pending RgbInfo file
-	pub fn get_rgb_channel_info_pending(&self, channel_id: &ChannelId) -> (RgbInfo, PathBuf) {
-		self.get_rgb_channel_info(&channel_id.0.as_hex().to_string(), true)
-	}
-
-	/// Parse RgbInfo
-	pub fn parse_rgb_channel_info(&self, rgb_channel_info_path: &PathBuf) -> RgbInfo {
-		let serialized_info =
-			fs::read_to_string(rgb_channel_info_path).expect("valid rgb info file");
-		serde_json::from_str(&serialized_info).expect("valid rgb info file")
+	pub fn get_rgb_channel_info_pending(
+		&self, channel_id: &ChannelId,
+	) -> (Option<RgbInfo>, RgbInfoKey) {
+		self.get_rgb_channel_info(&channel_id, true)
 	}
 
 	/// Whether the channel data for a channel exist
 	pub fn is_channel_rgb(&self, channel_id: &ChannelId) -> bool {
-		self.get_rgb_channel_info_path(&channel_id.0.as_hex().to_string(), false).exists()
+		let cache_key = RgbInfoKey::new(&channel_id, false);
+		self.database.rgb_info().lock().unwrap().get_by_rgb_info_key(&cache_key).is_some()
 	}
 
 	/// Write RgbInfo file
-	pub fn write_rgb_channel_info(&self, path: &PathBuf, rgb_info: &RgbInfo) {
-		let serialized_info = serde_json::to_string(&rgb_info).expect("valid rgb info");
-		fs::write(path, serialized_info).expect("able to write")
+	pub fn write_rgb_channel_info(&self, key: &RgbInfoKey, rgb_info: &RgbInfo) {
+		self.database.rgb_info().lock().unwrap().insert(*key, rgb_info.clone());
 	}
 
 	fn _append_pending_extension(&self, path: &Path) -> PathBuf {
@@ -535,46 +528,14 @@ impl ColorSourceImpl {
 		new_path
 	}
 
-	/// Write RGB payment info to file
-	pub fn write_rgb_payment_info_file(
-		&self, payment_hash: &PaymentHash, contract_id: ContractId, amount_rgb: u64,
-		swap_payment: bool, inbound: bool,
-	) {
-		let rgb_payment_info_path = self.get_rgb_payment_info_path(payment_hash, inbound);
-		let rgb_payment_info_tmp_path = self._append_pending_extension(&rgb_payment_info_path);
-		let rgb_payment_info = RgbPaymentInfo {
-			contract_id,
-			amount: amount_rgb,
-			local_rgb_amount: 0,
-			remote_rgb_amount: 0,
-			swap_payment,
-			inbound,
-		};
-		let serialized_info =
-			serde_json::to_string(&rgb_payment_info).expect("valid rgb payment info");
-		std::fs::write(rgb_payment_info_path, serialized_info.clone())
-			.expect("able to write rgb payment info file");
-		std::fs::write(rgb_payment_info_tmp_path, serialized_info)
-			.expect("able to write rgb payment info tmp file");
-	}
-
 	/// Rename RGB files from temporary to final channel ID
 	pub(crate) fn rename_rgb_files(
 		&self, channel_id: &ChannelId, temporary_channel_id: &ChannelId,
 	) {
-		let temp_chan_id = temporary_channel_id.0.as_hex().to_string();
-		let chan_id = channel_id.0.as_hex().to_string();
+		let temp_chan_id = temporary_channel_id;
+		let chan_id = channel_id;
 
-		fs::rename(
-			self.get_rgb_channel_info_path(&temp_chan_id, false),
-			self.get_rgb_channel_info_path(&chan_id, false),
-		)
-		.expect("rename ok");
-		fs::rename(
-			self.get_rgb_channel_info_path(&temp_chan_id, true),
-			self.get_rgb_channel_info_path(&chan_id, true),
-		)
-		.expect("rename ok");
+		self.database.rename_channel_id(temp_chan_id, chan_id);
 
 		let funding_consignment_tmp =
 			self.ldk_data_dir.join(format!("consignment_{}", temp_chan_id));
@@ -633,24 +594,21 @@ impl ColorSourceImpl {
 			local_rgb_amount: 0,
 			remote_rgb_amount,
 		};
-		let temporary_channel_id_str = temporary_channel_id.0.as_hex().to_string();
-		self.write_rgb_channel_info(
-			&self.get_rgb_channel_info_path(&temporary_channel_id_str, true),
-			&rgb_info,
-		);
-		self.write_rgb_channel_info(
-			&self.get_rgb_channel_info_path(&temporary_channel_id_str, false),
-			&rgb_info,
-		);
+		self.write_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, true), &rgb_info);
+		self.write_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, false), &rgb_info);
 
 		Ok(())
 	}
 
 	/// Update RGB channel amount
 	pub fn update_rgb_channel_amount(
-		&self, channel_id: &str, rgb_offered_htlc: u64, rgb_received_htlc: u64, pending: bool,
+		&self, channel_id: &ChannelId, rgb_offered_htlc: u64, rgb_received_htlc: u64, pending: bool,
 	) {
-		let (mut rgb_info, info_file_path) = self.get_rgb_channel_info(channel_id, pending);
+		let (rgb_info, key) = self.get_rgb_channel_info(channel_id, pending);
+		if rgb_info.is_none() {
+			return;
+		}
+		let mut rgb_info = rgb_info.unwrap();
 
 		if rgb_offered_htlc > rgb_received_htlc {
 			let spent = rgb_offered_htlc - rgb_received_htlc;
@@ -662,19 +620,14 @@ impl ColorSourceImpl {
 			rgb_info.remote_rgb_amount -= received;
 		}
 
-		self.write_rgb_channel_info(&info_file_path, &rgb_info)
+		self.write_rgb_channel_info(&key, &rgb_info)
 	}
 
 	/// Update pending RGB channel amount
 	pub(crate) fn update_rgb_channel_amount_pending(
 		&self, channel_id: &ChannelId, rgb_offered_htlc: u64, rgb_received_htlc: u64,
 	) {
-		self.update_rgb_channel_amount(
-			&channel_id.0.as_hex().to_string(),
-			rgb_offered_htlc,
-			rgb_received_htlc,
-			true,
-		)
+		self.update_rgb_channel_amount(&channel_id, rgb_offered_htlc, rgb_received_htlc, true)
 	}
 
 	/// Whether the payment is colored
@@ -686,20 +639,27 @@ impl ColorSourceImpl {
 	pub(crate) fn filter_first_hops(
 		&self, payment_hash: &PaymentHash, first_hops: &mut Vec<ChannelDetails>,
 	) -> (ContractId, u64) {
-		let htlc_payment_hash = payment_hash.0.as_hex().to_string();
-		let payment_hash_key = PaymentHashKey::new(payment_hash.clone(), database::PaymentDirection::Outbound);
-		let rgb_payment_info =
-			self.database.rgb_payment().lock().unwrap().get_by_payment_hash_key(&payment_hash_key).unwrap().to_owned();
+		let htlc_payment_hash = payment_hash;
+		let payment_hash_key =
+			PaymentHashKey::new(payment_hash.clone(), database::PaymentDirection::Outbound);
+		let rgb_payment_info = self
+			.database
+			.rgb_payment()
+			.lock()
+			.unwrap()
+			.get_by_payment_hash_key(&payment_hash_key)
+			.unwrap()
+			.to_owned();
 		let contract_id = rgb_payment_info.contract_id;
 		let rgb_amount = rgb_payment_info.amount;
 		first_hops.retain(|h| {
-			let info_file_path = self.ldk_data_dir.join(h.channel_id.0.as_hex().to_string());
-			if !info_file_path.exists() {
-				return false;
+			let rgb_info_key = RgbInfoKey::new(&h.channel_id, false);
+			let (rgb_info, _) = self.get_rgb_channel_info_pending(&h.channel_id);
+			if rgb_info.is_none() {
+				unreachable!("Channel should have RGB info")
 			}
-			let serialized_info = fs::read_to_string(info_file_path).expect("valid rgb info file");
-			let rgb_info: RgbInfo =
-				serde_json::from_str(&serialized_info).expect("valid rgb info file");
+
+			let rgb_info = rgb_info.unwrap();
 			rgb_info.contract_id == contract_id && rgb_info.local_rgb_amount >= rgb_amount
 		});
 		(contract_id, rgb_amount)

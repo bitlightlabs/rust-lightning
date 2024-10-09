@@ -6,7 +6,10 @@ use std::{
 
 use bitcoin::Txid;
 
-use crate::{ln::{ChannelId, PaymentHash}, rgb_utils::{RgbPaymentInfo, TransferInfo}};
+use crate::{
+	ln::{ChannelId, PaymentHash},
+	rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo},
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PaymentDirection {
@@ -42,23 +45,15 @@ pub struct ProxyIdKey {
 
 impl Display for ProxyIdKey {
 	fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-		write!(
-			f,
-			"{}.{}.{}",
-			self.channel_id,
-			self.payment_hash,
-			self.direction
-		)
+		write!(f, "{}.{}.{}", self.channel_id, self.payment_hash, self.direction)
 	}
 }
 
 impl ProxyIdKey {
-	pub fn new(channel_id: &ChannelId, payment_hash: &PaymentHash, direction: PaymentDirection) -> Self {
-		Self {
-			channel_id: channel_id.clone(),
-			payment_hash: payment_hash.clone(),
-			direction,
-		}
+	pub fn new(
+		channel_id: &ChannelId, payment_hash: &PaymentHash, direction: PaymentDirection,
+	) -> Self {
+		Self { channel_id: channel_id.clone(), payment_hash: payment_hash.clone(), direction }
 	}
 }
 
@@ -69,31 +64,20 @@ pub struct PaymentHashKey {
 }
 
 impl From<&ProxyIdKey> for PaymentHashKey {
-	fn from(proxy_id_key:& ProxyIdKey) -> Self {
-		Self {
-			payment_hash: proxy_id_key.payment_hash,
-			direction: proxy_id_key.direction,
-		}
+	fn from(proxy_id_key: &ProxyIdKey) -> Self {
+		Self { payment_hash: proxy_id_key.payment_hash, direction: proxy_id_key.direction }
 	}
 }
 
 impl Display for PaymentHashKey {
 	fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-		write!(
-			f,
-			"{}.{}",
-			self.payment_hash,
-			self.direction
-		)
+		write!(f, "{}.{}", self.payment_hash, self.direction)
 	}
 }
 
 impl PaymentHashKey {
 	pub fn new(payment_hash: PaymentHash, direction: PaymentDirection) -> Self {
-		Self {
-			payment_hash,
-			direction,
-		}
+		Self { payment_hash, direction }
 	}
 }
 
@@ -118,7 +102,9 @@ impl RgbPaymentCache {
 		self.by_payment_hash.get(payment_hash)
 	}
 
-	pub fn get_by_payment_hash_key(&self, payment_hash_key: &PaymentHashKey) -> Option<&RgbPaymentInfo> {
+	pub fn get_by_payment_hash_key(
+		&self, payment_hash_key: &PaymentHashKey,
+	) -> Option<&RgbPaymentInfo> {
 		self.by_payment_hash_key.get(payment_hash_key)
 	}
 
@@ -171,20 +157,91 @@ impl TransferInfoCache {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct RgbInfoKey {
+	channel_id: ChannelId,
+	is_pending: bool,
+}
+
+impl Display for RgbInfoKey {
+	fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+		write!(f, "{}.{}", self.channel_id, if self.is_pending { "pending" } else { "" })
+	}
+}
+
+impl RgbInfoKey {
+	pub fn new(channel_id: &ChannelId, is_pending: bool) -> Self {
+		Self { channel_id: channel_id.clone(), is_pending }
+	}
+}
+
+#[derive(Clone, Debug, Default)]
+struct RgbInfoCache {
+	by_rgb_info_key: HashMap<RgbInfoKey, RgbInfo>,
+}
+
+impl RgbInfoCache {
+	fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn get_by_rgb_info_key(&self, rgb_info_key: &RgbInfoKey) -> Option<&RgbInfo> {
+		self.by_rgb_info_key.get(rgb_info_key)
+	}
+
+	pub fn insert(&mut self, rgb_info_key: RgbInfoKey, info: RgbInfo) {
+		self.by_rgb_info_key.insert(rgb_info_key, info);
+	}
+
+	pub fn remove(&mut self, rgb_info_key: &RgbInfoKey) {
+		self.by_rgb_info_key.remove(rgb_info_key);
+	}
+}
+
 #[derive(Default)]
 pub struct ColorDatabaseImpl {
 	rgb_payment_cache: Arc<Mutex<RgbPaymentCache>>,
 	transfer_info: Arc<Mutex<TransferInfoCache>>,
+	rgb_info: Arc<Mutex<RgbInfoCache>>,
 }
 
 impl ColorDatabaseImpl {
 	pub fn new() -> Self {
 		Self::default()
 	}
+
 	pub fn rgb_payment(&self) -> Arc<Mutex<RgbPaymentCache>> {
 		self.rgb_payment_cache.clone()
 	}
+
 	pub fn transfer_info(&self) -> Arc<Mutex<TransferInfoCache>> {
 		self.transfer_info.clone()
+	}
+
+	pub fn rgb_info(&self) -> Arc<Mutex<RgbInfoCache>> {
+		self.rgb_info.clone()
+	}
+
+	pub fn rename_channel_id(&self, old_channel_id: &ChannelId, new_channel_id: &ChannelId) {
+		let mut rgb_info_key = RgbInfoKey::new(old_channel_id, false);
+		if let Some(info) = self.rgb_info().lock().unwrap().get_by_rgb_info_key(&rgb_info_key) {
+			let new_info = info.clone();
+			self.rgb_info()
+				.lock()
+				.unwrap()
+				.insert(RgbInfoKey::new(new_channel_id, false), new_info);
+			self.rgb_info().lock().unwrap().remove(&rgb_info_key);
+		}
+
+		let mut rgb_info_key_pending = RgbInfoKey::new(old_channel_id, true);
+		if let Some(info) =
+			self.rgb_info().lock().unwrap().get_by_rgb_info_key(&rgb_info_key_pending)
+		{
+			let new_info = info.clone();
+			self.rgb_info().lock().unwrap().insert(RgbInfoKey::new(new_channel_id, true), new_info);
+			self.rgb_info().lock().unwrap().remove(&rgb_info_key_pending);
+		}
+
+		// todo: rename consignment
 	}
 }
