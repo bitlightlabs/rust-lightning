@@ -1239,7 +1239,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitor<Signer> {
 	                  funding_redeemscript: ScriptBuf, channel_value_satoshis: u64,
 	                  commitment_transaction_number_obscure_factor: u64,
 	                  initial_holder_commitment_tx: HolderCommitmentTransaction,
-	                  best_block: BestBlock, counterparty_node_id: PublicKey, channel_id: ChannelId, ldk_data_dir: PathBuf,
+	                  best_block: BestBlock, counterparty_node_id: PublicKey, channel_id: ChannelId, color_source: crate::color_ext::ColorSourceWrapper,
 	) -> ChannelMonitor<Signer> {
 
 		assert!(commitment_transaction_number_obscure_factor <= (1 << 48));
@@ -1277,7 +1277,7 @@ impl<Signer: WriteableEcdsaChannelSigner> ChannelMonitor<Signer> {
 
 		let onchain_tx_handler = OnchainTxHandler::new(
 			channel_value_satoshis, channel_keys_id, destination_script.into(), keys,
-			channel_parameters.clone(), initial_holder_commitment_tx, secp_ctx, ldk_data_dir
+			channel_parameters.clone(), initial_holder_commitment_tx, secp_ctx, color_source
 		);
 
 		let mut outputs_to_watch = new_hash_map();
@@ -4470,9 +4470,9 @@ where
 
 const MAX_ALLOC_SIZE: usize = 64*1024;
 
-impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP, PathBuf)>
+impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP, crate::color_ext::ColorSourceWrapper)>
 		for (BlockHash, ChannelMonitor<SP::EcdsaSigner>) {
-	fn read<R: io::Read>(reader: &mut R, args: (&'a ES, &'b SP, PathBuf)) -> Result<Self, DecodeError> {
+	fn read<R: io::Read>(reader: &mut R, args: (&'a ES, &'b SP, crate::color_ext::ColorSourceWrapper)) -> Result<Self, DecodeError> {
 		macro_rules! unwrap_obj {
 			($key: expr) => {
 				match $key {
@@ -4482,7 +4482,7 @@ impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP
 			}
 		}
 
-		let (entropy_source, signer_provider, ldk_data_dir) = args;
+		let (entropy_source, signer_provider, color_source) = args;
 
 		let _ver = read_ver_prefix!(reader, SERIALIZATION_VERSION);
 
@@ -4659,7 +4659,7 @@ impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP
 			}
 		}
 		let onchain_tx_handler: OnchainTxHandler<SP::EcdsaSigner> = ReadableArgs::read(
-			reader, (entropy_source, signer_provider, channel_value_satoshis, channel_keys_id, ldk_data_dir)
+			reader, (entropy_source, signer_provider, channel_value_satoshis, channel_keys_id, color_source)
 		)?;
 
 		let lockdown_from_offchain = Readable::read(reader)?;
