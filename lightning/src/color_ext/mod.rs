@@ -12,8 +12,8 @@ use crate::sign::SignerProvider;
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
-use bitcoin::TxOut;
-use database::{ColorDatabaseImpl, PaymentHashKey, ProxyIdKey, RgbInfoKey};
+use bitcoin::{TxOut, Txid};
+use database::{ColorDatabaseImpl, ConsignmentBinaryData, PaymentHashKey, ProxyIdKey, RgbInfoKey};
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
 use rgb_lib::Fascia;
@@ -517,15 +517,8 @@ impl ColorSourceImpl {
 	}
 
 	/// Write RgbInfo file
-	pub fn write_rgb_channel_info(&self, key: &RgbInfoKey, rgb_info: &RgbInfo) {
+	pub fn save_rgb_channel_info(&self, key: &RgbInfoKey, rgb_info: &RgbInfo) {
 		self.database.rgb_info().lock().unwrap().insert(*key, rgb_info.clone());
-	}
-
-	fn _append_pending_extension(&self, path: &Path) -> PathBuf {
-		let mut new_path = path.to_path_buf();
-		new_path
-			.set_extension(format!("{}_pending", new_path.extension().unwrap().to_string_lossy()));
-		new_path
 	}
 
 	/// Rename RGB files from temporary to final channel ID
@@ -536,13 +529,6 @@ impl ColorSourceImpl {
 		let chan_id = channel_id;
 
 		self.database.rename_channel_id(temp_chan_id, chan_id);
-
-		let funding_consignment_tmp =
-			self.ldk_data_dir.join(format!("consignment_{}", temp_chan_id));
-		if funding_consignment_tmp.exists() {
-			let funding_consignment = self.ldk_data_dir.join(format!("consignment_{}", chan_id));
-			fs::rename(funding_consignment_tmp, funding_consignment).expect("rename ok");
-		}
 	}
 
 	/// Handle funding on the receiver side
@@ -583,19 +569,18 @@ impl ColorSourceImpl {
 			},
 		};
 
-		let consignment_path = self.ldk_data_dir.join(format!("consignment_{}", funding_txid));
-		consignment.save_file(consignment_path).expect("unable to write file");
-		let consignment_path =
-			self.ldk_data_dir.join(format!("consignment_{}", temporary_channel_id.0.as_hex()));
-		consignment.save_file(consignment_path).expect("unable to write file");
+		let funding_txid = Txid::from_str(&funding_txid).unwrap();
+		let mut consignment_data = ConsignmentBinaryData::default();
+		consignment.save(&mut consignment_data);
+		self.database.consignment().lock().unwrap().insert(temporary_channel_id, funding_txid, consignment_data);
 
 		let rgb_info = RgbInfo {
 			contract_id: consignment.contract_id(),
 			local_rgb_amount: 0,
 			remote_rgb_amount,
 		};
-		self.write_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, true), &rgb_info);
-		self.write_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, false), &rgb_info);
+		self.save_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, true), &rgb_info);
+		self.save_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, false), &rgb_info);
 
 		Ok(())
 	}
@@ -620,7 +605,7 @@ impl ColorSourceImpl {
 			rgb_info.remote_rgb_amount -= received;
 		}
 
-		self.write_rgb_channel_info(&key, &rgb_info)
+		self.save_rgb_channel_info(&key, &rgb_info)
 	}
 
 	/// Update pending RGB channel amount

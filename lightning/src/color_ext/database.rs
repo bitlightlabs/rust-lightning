@@ -1,6 +1,7 @@
 use core::fmt::{Display, Formatter};
 use std::{
 	collections::HashMap,
+	io::{self, Write},
 	sync::{Arc, Mutex},
 };
 
@@ -198,11 +199,88 @@ impl RgbInfoCache {
 	}
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ConsignmentBinaryData(Vec<u8>);
+
+impl Write for ConsignmentBinaryData {
+	fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+		self.0.extend_from_slice(buf);
+		Ok(buf.len())
+	}
+
+	fn flush(&mut self) -> io::Result<()> {
+		Ok(())
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ConsignmentHandle(usize);
+
+#[derive(Clone, Debug, Default)]
+struct ConsignmentCache {
+    by_channel_id: HashMap<ChannelId, ConsignmentHandle>,
+    by_funding_txid: HashMap<Txid, ConsignmentHandle>,
+    data_store: HashMap<ConsignmentHandle, ConsignmentBinaryData>,
+    next_handle: usize,
+}
+
+impl ConsignmentCache {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get_by_channel_id(&self, channel_id: &ChannelId) -> Option<ConsignmentHandle> {
+        self.by_channel_id.get(channel_id).copied()
+    }
+
+    pub fn get_by_funding_txid(&self, funding_txid: &Txid) -> Option<ConsignmentHandle> {
+        self.by_funding_txid.get(funding_txid).copied()
+    }
+
+    pub fn insert(&mut self, channel_id: &ChannelId, funding_txid: Txid, info: ConsignmentBinaryData)-> ConsignmentHandle {
+        let handle = ConsignmentHandle(self.next_handle);
+        self.next_handle += 1;
+        self.data_store.insert(handle, info);
+        self.by_channel_id.insert(channel_id.clone(), handle);
+        self.by_funding_txid.insert(funding_txid, handle);
+
+		handle
+    }
+
+    pub fn remove(&mut self, channel_id: &ChannelId, funding_txid: Txid) {
+        if let Some(handle) = self.by_channel_id.remove(channel_id) {
+            self.by_funding_txid.retain(|_, &mut v| v != handle);
+            self.data_store.remove(&handle);
+        }
+        self.by_funding_txid.remove(&funding_txid);
+    }
+
+    pub fn resolve(&self, handle: ConsignmentHandle) -> Option<&ConsignmentBinaryData> {
+        self.data_store.get(&handle)
+    }
+
+	pub fn rename_channel_id(&mut self, handle: ConsignmentHandle, old_channel_id: &ChannelId, new_channel_id: &ChannelId) {
+		if let Some(info) = self.data_store.get(&handle) {
+			let mut new_info = ConsignmentBinaryData(Vec::new());
+			new_info.write_all(info.0.as_slice()).unwrap();
+			new_info.0.extend_from_slice(new_channel_id.as_ref());
+			self.data_store.insert(handle, new_info);
+		}
+
+		if let Some(old_handle) = self.by_channel_id.remove(old_channel_id) {
+			if old_handle == handle {
+				self.by_channel_id.insert(new_channel_id.clone(), handle);
+			}
+		}
+	}
+}
+
 #[derive(Default)]
 pub struct ColorDatabaseImpl {
 	rgb_payment_cache: Arc<Mutex<RgbPaymentCache>>,
 	transfer_info: Arc<Mutex<TransferInfoCache>>,
 	rgb_info: Arc<Mutex<RgbInfoCache>>,
+	consignment_cache: Arc<Mutex<ConsignmentCache>>,
 }
 
 impl ColorDatabaseImpl {
@@ -222,8 +300,12 @@ impl ColorDatabaseImpl {
 		self.rgb_info.clone()
 	}
 
+	pub fn consignment(&self) -> Arc<Mutex<ConsignmentCache>> {
+		self.consignment_cache.clone()
+	}
+
 	pub fn rename_channel_id(&self, old_channel_id: &ChannelId, new_channel_id: &ChannelId) {
-		let mut rgb_info_key = RgbInfoKey::new(old_channel_id, false);
+		let rgb_info_key = RgbInfoKey::new(old_channel_id, false);
 		if let Some(info) = self.rgb_info().lock().unwrap().get_by_rgb_info_key(&rgb_info_key) {
 			let new_info = info.clone();
 			self.rgb_info()
@@ -233,7 +315,7 @@ impl ColorDatabaseImpl {
 			self.rgb_info().lock().unwrap().remove(&rgb_info_key);
 		}
 
-		let mut rgb_info_key_pending = RgbInfoKey::new(old_channel_id, true);
+		let rgb_info_key_pending = RgbInfoKey::new(old_channel_id, true);
 		if let Some(info) =
 			self.rgb_info().lock().unwrap().get_by_rgb_info_key(&rgb_info_key_pending)
 		{
@@ -242,6 +324,8 @@ impl ColorDatabaseImpl {
 			self.rgb_info().lock().unwrap().remove(&rgb_info_key_pending);
 		}
 
-		// todo: rename consignment
+		if let Some(consignment_handle) = self.consignment().lock().unwrap().get_by_channel_id(old_channel_id) {
+			self.consignment().lock().unwrap().rename_channel_id(consignment_handle, old_channel_id, new_channel_id);
+		}
 	}
 }
