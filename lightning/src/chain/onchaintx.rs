@@ -44,8 +44,6 @@ use core::mem::replace;
 use core::mem::swap;
 use crate::ln::features::ChannelTypeFeatures;
 
-use std::path::PathBuf;
-
 const MAX_ALLOC_SIZE: usize = 64*1024;
 
 /// An entry for an [`OnchainEvent`], stating the block height when the event was observed and the
@@ -282,7 +280,7 @@ pub struct OnchainTxHandler<ChannelSigner: WriteableEcdsaChannelSigner> {
 
 	pub(super) secp_ctx: Secp256k1<secp256k1::All>,
 
-	ldk_data_dir: PathBuf,
+	color_source: crate::color_ext::ColorSourceWrapper,
 }
 
 impl<ChannelSigner: WriteableEcdsaChannelSigner> PartialEq for OnchainTxHandler<ChannelSigner> {
@@ -355,13 +353,13 @@ impl<ChannelSigner: WriteableEcdsaChannelSigner> OnchainTxHandler<ChannelSigner>
 	}
 }
 
-impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP, u64, [u8; 32], PathBuf)> for OnchainTxHandler<SP::EcdsaSigner> {
-	fn read<R: io::Read>(reader: &mut R, args: (&'a ES, &'b SP, u64, [u8; 32], PathBuf)) -> Result<Self, DecodeError> {
+impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP, u64, [u8; 32], crate::color_ext::ColorSourceWrapper)> for OnchainTxHandler<SP::EcdsaSigner> {
+	fn read<R: io::Read>(reader: &mut R, args: (&'a ES, &'b SP, u64, [u8; 32], crate::color_ext::ColorSourceWrapper)) -> Result<Self, DecodeError> {
 		let entropy_source = args.0;
 		let signer_provider = args.1;
 		let channel_value_satoshis = args.2;
 		let channel_keys_id = args.3;
-		let ldk_data_dir = args.4;
+		let color_source = args.4;
 
 		let _ver = read_ver_prefix!(reader, SERIALIZATION_VERSION);
 
@@ -444,7 +442,7 @@ impl<'a, 'b, ES: EntropySource, SP: SignerProvider> ReadableArgs<(&'a ES, &'b SP
 			onchain_events_awaiting_threshold_conf,
 			pending_claim_events: Vec::new(),
 			secp_ctx,
-			ldk_data_dir,
+			color_source,
 		})
 	}
 }
@@ -453,7 +451,7 @@ impl<ChannelSigner: WriteableEcdsaChannelSigner> OnchainTxHandler<ChannelSigner>
 	pub(crate) fn new(
 		channel_value_satoshis: u64, channel_keys_id: [u8; 32], destination_script: ScriptBuf,
 		signer: ChannelSigner, channel_parameters: ChannelTransactionParameters,
-		holder_commitment: HolderCommitmentTransaction, secp_ctx: Secp256k1<secp256k1::All>, ldk_data_dir: PathBuf
+		holder_commitment: HolderCommitmentTransaction, secp_ctx: Secp256k1<secp256k1::All>, color_source: crate::color_ext::ColorSourceWrapper
 	) -> Self {
 		OnchainTxHandler {
 			channel_value_satoshis,
@@ -469,8 +467,7 @@ impl<ChannelSigner: WriteableEcdsaChannelSigner> OnchainTxHandler<ChannelSigner>
 			onchain_events_awaiting_threshold_conf: Vec::new(),
 			pending_claim_events: Vec::new(),
 			secp_ctx,
-
-			ldk_data_dir,
+			color_source,
 		}
 	}
 
@@ -1189,7 +1186,7 @@ impl<ChannelSigner: WriteableEcdsaChannelSigner> OnchainTxHandler<ChannelSigner>
 				.unwrap();
 			let counterparty_htlc_sig = holder_commitment.counterparty_htlc_sigs[htlc_idx];
 			let mut htlc_tx = trusted_tx.build_unsigned_htlc_tx(
-				&self.channel_transaction_parameters.as_holder_broadcastable(), htlc_idx, preimage, &self.ldk_data_dir,
+				&self.channel_transaction_parameters.as_holder_broadcastable(), htlc_idx, preimage, self.color_source.clone(),
 			);
 
 			let htlc_descriptor = HTLCDescriptor {
