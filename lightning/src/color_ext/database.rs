@@ -260,13 +260,6 @@ impl ConsignmentCache {
     }
 
 	pub fn rename_channel_id(&mut self, handle: ConsignmentHandle, old_channel_id: &ChannelId, new_channel_id: &ChannelId) {
-		if let Some(info) = self.data_store.get(&handle) {
-			let mut new_info = ConsignmentBinaryData(Vec::new());
-			new_info.write_all(info.0.as_slice()).unwrap();
-			new_info.0.extend_from_slice(new_channel_id.as_ref());
-			self.data_store.insert(handle, new_info);
-		}
-
 		if let Some(old_handle) = self.by_channel_id.remove(old_channel_id) {
 			if old_handle == handle {
 				self.by_channel_id.insert(new_channel_id.clone(), handle);
