@@ -137,6 +137,12 @@ impl RgbPaymentCache {
 		}
 	}
 
+	pub fn insert_without_proxy_id(&mut self, payment_hash_key: &PaymentHashKey, info: RgbPaymentInfo) {
+		self.by_payment_hash_key.insert(payment_hash_key.clone(), info.clone());
+		self.by_payment_hash.insert(payment_hash_key.payment_hash, info.clone());
+		self.pending_payments.insert(payment_hash_key.payment_hash, info.clone());
+	}
+
 	pub fn remove(&mut self, proxy_id: &ProxyIdKey) {
 		self.by_proxy_id.remove(proxy_id);
 		self.by_payment_hash_key.remove(&proxy_id.into());

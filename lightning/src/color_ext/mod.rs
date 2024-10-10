@@ -502,7 +502,7 @@ impl ColorSourceImpl {
 	}
 
 	/// Get RgbInfo file
-	pub(crate) fn get_rgb_channel_info(
+	pub fn get_rgb_channel_info(
 		&self, channel_id: &ChannelId, pending: bool,
 	) -> (Option<RgbInfo>, RgbInfoKey) {
 		let key = RgbInfoKey::new(channel_id, pending);
@@ -529,6 +529,24 @@ impl ColorSourceImpl {
 		self.database.rgb_info().lock().unwrap().insert(*key, rgb_info.clone());
 	}
 
+	pub fn save_rgb_payment_info(
+		&self, channel_id: Option<&ChannelId>, payment_hash: &PaymentHash, is_pending: bool,
+		rgb_payment_info: &RgbPaymentInfo,
+	) {
+		if channel_id.is_none() && is_pending {
+			// 推测当 is_pending 为 true 时，因为时 keysend 所以暂时还没有 channel_id
+			self.database.rgb_payment().lock().unwrap().insert_without_proxy_id(
+				&PaymentHashKey::new(payment_hash.clone(), rgb_payment_info.inbound.into()),
+				rgb_payment_info.clone(),
+			);
+		} else {
+			self.database.rgb_payment().lock().unwrap().insert(
+				&ProxyIdKey::new(channel_id.unwrap(), payment_hash, is_pending.into()),
+				rgb_payment_info.clone(),
+				is_pending,
+			);
+		}
+	}
 	/// Rename RGB files from temporary to final channel ID
 	pub(crate) fn rename_rgb_files(
 		&self, channel_id: &ChannelId, temporary_channel_id: &ChannelId,
