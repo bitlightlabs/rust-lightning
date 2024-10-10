@@ -99,6 +99,15 @@ impl RgbPaymentCache {
 		self.by_proxy_id.get(proxy_id)
 	}
 
+    pub fn resolve_channel_id(&self, payment_hash: &PaymentHash) -> Option<ChannelId> {
+        for key in self.by_proxy_id.keys() {
+            if key.payment_hash == *payment_hash {
+                return Some(key.channel_id.clone());
+            }
+        }
+        None
+    }
+
 	pub fn get_by_payment_hash(&self, payment_hash: &PaymentHash) -> Option<&RgbPaymentInfo> {
 		self.by_payment_hash.get(payment_hash)
 	}

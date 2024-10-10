@@ -13,7 +13,10 @@ use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{TxOut, Txid};
-use database::{ColorDatabaseImpl, ConsignmentBinaryData, PaymentHashKey, ProxyIdKey, RgbInfoKey};
+use database::{
+	ColorDatabaseImpl, ConsignmentBinaryData, PaymentDirection, PaymentHashKey, ProxyIdKey,
+	RgbInfoKey,
+};
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
 use rgb_lib::Fascia;
@@ -595,7 +598,7 @@ impl ColorSourceImpl {
 	}
 
 	/// Update RGB channel amount
-	pub fn update_rgb_channel_amount(
+	pub fn update_rgb_channel_amount_impl(
 		&self, channel_id: &ChannelId, rgb_offered_htlc: u64, rgb_received_htlc: u64, pending: bool,
 	) {
 		let (rgb_info, key) = self.get_rgb_channel_info(channel_id, pending);
@@ -621,7 +624,7 @@ impl ColorSourceImpl {
 	pub(crate) fn update_rgb_channel_amount_pending(
 		&self, channel_id: &ChannelId, rgb_offered_htlc: u64, rgb_received_htlc: u64,
 	) {
-		self.update_rgb_channel_amount(&channel_id, rgb_offered_htlc, rgb_received_htlc, true)
+		self.update_rgb_channel_amount_impl(&channel_id, rgb_offered_htlc, rgb_received_htlc, true)
 	}
 
 	/// Whether the payment is colored
@@ -675,5 +678,27 @@ impl ColorSourceImpl {
 			rgb_info.contract_id == contract_id && rgb_info.local_rgb_amount >= rgb_amount
 		});
 		(contract_id, rgb_amount)
+	}
+
+	pub fn update_rgb_channel_amount(&self, payment_hash: &PaymentHash, receiver: bool) {
+		let payment = self.database.rgb_payment().lock().unwrap().get_by_payment_hash_key(
+			&PaymentHashKey::new(payment_hash.clone(), PaymentDirection::from(receiver)),
+		);
+		if payment.is_none() {
+			return;
+		}
+		let rgb_payment_info = payment.unwrap();
+
+		let channel_id =
+			self.database.rgb_payment().lock().unwrap().resolve_channel_id(payment_hash);
+
+		if channel_id.is_none() {
+			panic!("failed to resolve channel id, which is a bug or of broken data.");
+			return;
+		}
+
+		let (offered, received) =
+			if receiver { (0, rgb_payment_info.amount) } else { (rgb_payment_info.amount, 0) };
+		self.update_rgb_channel_amount_impl(&channel_id, offered, received, false);
 	}
 }
