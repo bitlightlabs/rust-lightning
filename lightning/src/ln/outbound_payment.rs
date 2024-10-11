@@ -19,7 +19,6 @@ use crate::ln::types::{PaymentHash, PaymentPreimage, PaymentSecret};
 use crate::ln::channelmanager::{ChannelDetails, EventCompletionAction, HTLCSource, PaymentId};
 use crate::ln::onion_utils::{DecodedOnionFailure, HTLCFailReason};
 use crate::offers::invoice::Bolt12Invoice;
-use crate::rgb_utils::{filter_first_hops, get_rgb_payment_info_path, is_payment_rgb, parse_rgb_payment_info};
 use crate::routing::router::{BlindedTail, InFlightHtlcs, Path, PaymentParameters, Route, RouteParameters, Router};
 use crate::util::errors::APIError;
 use crate::util::logger::Logger;

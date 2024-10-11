@@ -39,7 +39,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo};
 
-mod database;
+pub mod database;
 
 /// Static blinding costant (will be removed in the future)
 pub const STATIC_BLINDING: u64 = 777;
@@ -190,7 +190,7 @@ impl ColorSourceImpl {
 	}
 
 	/// Whether the transaction is colored (i.e. it has an OP_RETURN output)
-	pub fn is_tx_colored(&self, tx: &Transaction) -> bool {
+	pub fn is_tx_colored(tx: &Transaction) -> bool {
 		ColorSourceImpl::op_return_position(tx).is_some()
 	}
 
@@ -712,8 +712,9 @@ impl ColorSourceImpl {
 
 		if channel_id.is_none() {
 			panic!("failed to resolve channel id, which is a bug or of broken data.");
-			return;
 		}
+
+		let channel_id = channel_id.unwrap();
 
 		let (offered, received) =
 			if receiver { (0, rgb_payment_info.amount) } else { (rgb_payment_info.amount, 0) };

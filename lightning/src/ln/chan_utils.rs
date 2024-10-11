@@ -24,10 +24,10 @@ use bitcoin::hash_types::{Txid, PubkeyHash, WPubkeyHash};
 
 use crate::chain::chaininterface::fee_for_weight;
 use crate::chain::package::WEIGHT_REVOKED_OUTPUT;
+use crate::color_ext::ColorSourceImpl;
 use crate::sign::EntropySource;
 use crate::ln::types::{PaymentHash, PaymentPreimage};
 use crate::ln::msgs::DecodeError;
-use crate::rgb_utils::{color_htlc, is_tx_colored};
 use crate::util::ser::{Readable, RequiredWrapper, Writeable, Writer};
 use crate::util::transaction_utils;
 
@@ -39,7 +39,6 @@ use bitcoin::PublicKey as BitcoinPublicKey;
 
 use crate::io;
 use core::cmp;
-use std::path::PathBuf;
 use crate::ln::chan_utils;
 use crate::util::transaction_utils::sort_outputs;
 use crate::ln::channel::{INITIAL_COMMITMENT_NUMBER, ANCHOR_OUTPUT_VALUE_SATOSHI};
@@ -1403,7 +1402,7 @@ impl CommitmentTransaction {
 
 	/// Whether the commitment transaction is colored (i.e. it has an OP_RETURN output)
 	pub fn is_colored(&self) -> bool {
-		is_tx_colored(&self.built.transaction)
+		ColorSourceImpl::is_tx_colored(&self.built.transaction)
 	}
 
 	/// Use non-zero fee anchors

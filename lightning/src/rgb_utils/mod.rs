@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-
+/*
 /// Static blinding costant (will be removed in the future)
 pub const STATIC_BLINDING: u64 = 777;
 /// Name of the file containing the bitcoin network
@@ -46,7 +46,7 @@ pub const WALLET_FINGERPRINT_FNAME: &str = "wallet_fingerprint";
 pub const WALLET_ACCOUNT_XPUB_FNAME: &str = "wallet_account_xpub";
 const INBOUND_EXT: &str = "inbound";
 const OUTBOUND_EXT: &str = "outbound";
-
+ */
 /// RGB channel info
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RgbInfo {
@@ -83,6 +83,7 @@ pub struct TransferInfo {
 	/// Transfer RGB amount
 	pub rgb_amount: u64,
 }
+/*
 
 fn _get_file_in_parent(ldk_data_dir: &Path, fname: &str) -> PathBuf {
 	ldk_data_dir.parent().unwrap().join(fname)
@@ -697,3 +698,4 @@ pub(crate) fn filter_first_hops(
 	});
 	(contract_id, rgb_amount)
 }
+*/

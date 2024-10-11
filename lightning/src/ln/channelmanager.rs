@@ -51,7 +51,6 @@ pub use crate::ln::channel::{InboundHTLCDetails, InboundHTLCStateDetails, Outbou
 use crate::ln::features::{Bolt12InvoiceFeatures, ChannelFeatures, ChannelTypeFeatures, InitFeatures, NodeFeatures};
 #[cfg(any(feature = "_test_utils", test))]
 use crate::ln::features::Bolt11InvoiceFeatures;
-use crate::rgb_utils::{get_rgb_payment_info_path, handle_funding, parse_rgb_payment_info};
 use crate::routing::router::{BlindedTail, InFlightHtlcs, Path, Payee, PaymentParameters, Route, RouteParameters, Router};
 use crate::ln::onion_payment::{check_incoming_htlc_cltv, create_recv_pending_htlc_info, create_fwd_pending_htlc_info, decode_incoming_update_add_htlc_onion, InboundHTLCErr, NextPacketDetails};
 use crate::ln::msgs;
