@@ -192,4 +192,5 @@ mod sync;
 
 pub mod rgb_utils;
 /// RGB specific extensions to the lightning library
+#[allow(missing_docs)]
 pub mod color_ext;

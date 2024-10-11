@@ -33,7 +33,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-/*
 /// Static blinding costant (will be removed in the future)
 pub const STATIC_BLINDING: u64 = 777;
 /// Name of the file containing the bitcoin network
@@ -44,9 +43,8 @@ pub const INDEXER_URL_FNAME: &str = "indexer_url";
 pub const WALLET_FINGERPRINT_FNAME: &str = "wallet_fingerprint";
 /// Name of the file containing the wallet account xPub
 pub const WALLET_ACCOUNT_XPUB_FNAME: &str = "wallet_account_xpub";
-const INBOUND_EXT: &str = "inbound";
-const OUTBOUND_EXT: &str = "outbound";
- */
+// const INBOUND_EXT: &str = "inbound";
+// const OUTBOUND_EXT: &str = "outbound";
 /// RGB channel info
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct RgbInfo {

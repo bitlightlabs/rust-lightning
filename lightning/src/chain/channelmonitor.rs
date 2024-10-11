@@ -57,7 +57,6 @@ use crate::events::bump_transaction::{AnchorDescriptor, BumpTransactionEvent};
 use crate::prelude::*;
 
 use core::{cmp, mem};
-use std::path::PathBuf;
 use crate::io::{self, Error};
 use core::ops::Deref;
 use crate::sync::{Mutex, LockTestExt};

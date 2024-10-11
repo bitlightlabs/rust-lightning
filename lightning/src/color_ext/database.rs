@@ -83,7 +83,7 @@ impl PaymentHashKey {
 }
 
 #[derive(Clone, Debug, Default)]
-struct RgbPaymentCache {
+pub(crate) struct RgbPaymentCache {
 	by_proxy_id: HashMap<ProxyIdKey, RgbPaymentInfo>,
 	by_payment_hash_key: HashMap<PaymentHashKey, RgbPaymentInfo>,
 	by_payment_hash: HashMap<PaymentHash, RgbPaymentInfo>,
@@ -151,7 +151,7 @@ impl RgbPaymentCache {
 }
 
 #[derive(Clone, Debug, Default)]
-struct TransferInfoCache {
+pub(crate) struct TransferInfoCache {
 	by_txid: HashMap<Txid, TransferInfo>,
 }
 
@@ -192,7 +192,7 @@ impl RgbInfoKey {
 }
 
 #[derive(Clone, Debug, Default)]
-struct RgbInfoCache {
+pub(crate) struct RgbInfoCache {
 	by_rgb_info_key: HashMap<RgbInfoKey, RgbInfo>,
 }
 
@@ -232,7 +232,7 @@ impl Write for ConsignmentBinaryData {
 pub struct ConsignmentHandle(usize);
 
 #[derive(Clone, Debug, Default)]
-struct ConsignmentCache {
+pub(crate) struct ConsignmentCache {
     by_channel_id: HashMap<ChannelId, ConsignmentHandle>,
     by_funding_txid: HashMap<Txid, ConsignmentHandle>,
     data_store: HashMap<ConsignmentHandle, ConsignmentBinaryData>,

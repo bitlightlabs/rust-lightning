@@ -39,6 +39,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::rgb_utils::{RgbInfo, RgbPaymentInfo, TransferInfo};
 
+#[allow(missing_docs)]
 pub mod database;
 
 /// Static blinding costant (will be removed in the future)
@@ -252,7 +253,6 @@ impl ColorSourceImpl {
 				);
 			}
 
-			// 获取或插入 RgbPaymentInfo
 			let rgb_payment_info = self
 				.database
 				.rgb_payment()
@@ -639,7 +639,7 @@ impl ColorSourceImpl {
 	}
 
 	/// Update pending RGB channel amount
-	pub(crate) fn update_rgb_channel_amount_pending(
+	pub fn update_rgb_channel_amount_pending(
 		&self, channel_id: &ChannelId, rgb_offered_htlc: u64, rgb_received_htlc: u64,
 	) {
 		self.update_rgb_channel_amount_impl(&channel_id, rgb_offered_htlc, rgb_received_htlc, true)
@@ -701,7 +701,7 @@ impl ColorSourceImpl {
 	pub fn update_rgb_channel_amount(&self, payment_hash: &PaymentHash, receiver: bool) {
 		let payment = self.database.rgb_payment().lock().unwrap().get_by_payment_hash_key(
 			&PaymentHashKey::new(payment_hash.clone(), PaymentDirection::from(receiver)),
-		);
+		).cloned();
 		if payment.is_none() {
 			return;
 		}
@@ -719,5 +719,9 @@ impl ColorSourceImpl {
 		let (offered, received) =
 			if receiver { (0, rgb_payment_info.amount) } else { (rgb_payment_info.amount, 0) };
 		self.update_rgb_channel_amount_impl(&channel_id, offered, received, false);
+	}
+
+	pub fn get_transfer_info(&self, txid: &Txid) -> Option<TransferInfo> {
+		self.database.transfer_info().lock().unwrap().get_by_txid(txid).cloned()
 	}
 }
