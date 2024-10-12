@@ -99,7 +99,6 @@ impl WalletProxyImpl {
 pub struct ColorSourceImpl {
 	ldk_data_dir: PathBuf,
 	network: BitcoinNetwork,
-	xpub: String,
 	wallet_proxy: WalletProxyImpl,
 	database: ColorDatabaseImpl,
 }
@@ -114,16 +113,17 @@ impl ColorSource for ColorSourceImpl {
 	}
 
 	fn xpub(&self) -> String {
-		self.xpub.clone()
+		let parent_dir = self.ldk_data_dir.parent().expect("Failed to get parent directory");
+		let file_path = parent_dir.join("wallet_account_xpub");
+		std::fs::read_to_string(file_path).expect("Failed to read the file")
 	}
 }
 
 impl ColorSourceImpl {
-	fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork, xpub: String) -> Self {
+	pub fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork) -> Self {
 		Self {
 			ldk_data_dir,
 			network,
-			xpub,
 			wallet_proxy: WalletProxyImpl::new(),
 			database: ColorDatabaseImpl::new(),
 		}
@@ -699,9 +699,16 @@ impl ColorSourceImpl {
 	}
 
 	pub fn update_rgb_channel_amount(&self, payment_hash: &PaymentHash, receiver: bool) {
-		let payment = self.database.rgb_payment().lock().unwrap().get_by_payment_hash_key(
-			&PaymentHashKey::new(payment_hash.clone(), PaymentDirection::from(receiver)),
-		).cloned();
+		let payment = self
+			.database
+			.rgb_payment()
+			.lock()
+			.unwrap()
+			.get_by_payment_hash_key(&PaymentHashKey::new(
+				payment_hash.clone(),
+				PaymentDirection::from(receiver),
+			))
+			.cloned();
 		if payment.is_none() {
 			return;
 		}
