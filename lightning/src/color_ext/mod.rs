@@ -9,6 +9,7 @@ use crate::ln::features::ChannelTypeFeatures;
 use crate::ln::{ChannelId, PaymentHash};
 use crate::sign::SignerProvider;
 
+use bitcoin::bip32::ExtendedPrivKey;
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
@@ -31,8 +32,10 @@ use rgb_lib::{
 };
 use tokio::runtime::Handle;
 
+use core::net;
 use core::ops::Deref;
 use std::collections::HashMap;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -60,7 +63,6 @@ pub trait ColorSource {
 	/// just for migration from legacy code
 	fn ldk_data_dir(&self) -> PathBuf;
 	fn network(&self) -> BitcoinNetwork;
-	fn xpub(&self) -> String;
 }
 
 pub type ColorSourceWrapper = Arc<Mutex<ColorSourceImpl>>;
@@ -69,9 +71,15 @@ pub trait WalletProxy {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String>;
 }
 
-#[derive(Debug)]
-pub struct WalletProxyImpl {}
-
+pub struct WalletProxyImpl {
+	network: BitcoinNetwork,
+	xprv: ExtendedPrivKey
+}
+impl fmt::Debug for WalletProxyImpl {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("WalletProxyImpl").field("xpub_getter", &"Function").finish()
+	}
+}
 impl WalletProxy for WalletProxyImpl {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String> {
 		unimplemented!()
@@ -79,8 +87,8 @@ impl WalletProxy for WalletProxyImpl {
 }
 
 impl WalletProxyImpl {
-	fn new() -> Self {
-		Self {}
+	fn new(network: BitcoinNetwork, xprv: ExtendedPrivKey) -> Self {
+		Self { network, xprv}
 	}
 
 	pub fn color_psbt(
@@ -91,6 +99,30 @@ impl WalletProxyImpl {
 
 	pub fn is_online(&self) -> bool {
 		unimplemented!()
+	}
+
+	pub fn xpub(&self) -> String {
+		bitcoin::bip32::ExtendedPubKey::from_priv(&bitcoin::key::Secp256k1::new(), &self.xprv).to_string()
+	}
+
+	async fn _get_rgb_wallet(&self, ldk_data_dir: &Path) -> Wallet {
+		let data_dir = ldk_data_dir.parent().unwrap().to_string_lossy().to_string();
+		let bitcoin_network = self.network.clone();
+		let xpub = self.xpub().clone();
+		tokio::task::spawn_blocking(move || {
+			Wallet::new(WalletData {
+				data_dir,
+				bitcoin_network,
+				database_type: DatabaseType::Sqlite,
+				max_allocations_per_utxo: 1,
+				pubkey: xpub,
+				mnemonic: None,
+				vanilla_keychain: None,
+			})
+			.expect("valid rgb-lib wallet")
+		})
+		.await
+		.unwrap()
 	}
 }
 
@@ -111,22 +143,33 @@ impl ColorSource for ColorSourceImpl {
 	fn network(&self) -> BitcoinNetwork {
 		self.network
 	}
-
-	fn xpub(&self) -> String {
-		let parent_dir = self.ldk_data_dir.parent().expect("Failed to get parent directory");
-		let file_path = parent_dir.join("wallet_account_xpub");
-		std::fs::read_to_string(file_path).expect("Failed to read the file")
-	}
 }
 
 impl ColorSourceImpl {
-	pub fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork) -> Self {
-		Self {
-			ldk_data_dir,
+	pub fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork, xprv: ExtendedPrivKey) -> Self {
+		let ldk_data_dir = Arc::new(ldk_data_dir);
+
+		let instance = Self {
+			ldk_data_dir: Arc::clone(&ldk_data_dir).to_path_buf(),
 			network,
-			wallet_proxy: WalletProxyImpl::new(),
+			wallet_proxy: WalletProxyImpl::new(
+				network,
+				xprv,
+			),
 			database: ColorDatabaseImpl::new(),
-		}
+		};
+	
+		instance
+	}
+
+	fn xpub(&self) -> String {
+		self.wallet_proxy.xpub()
+	}
+
+	fn _xpub(ldk_data_dir: PathBuf) -> String {
+		let parent_dir = ldk_data_dir.parent().expect("Failed to get parent directory");
+		let file_path = parent_dir.join("wallet_account_xpub");
+		std::fs::read_to_string(file_path).expect("Failed to read the file")
 	}
 
 	fn wallet_proxy(&self) -> &WalletProxyImpl {
