@@ -73,7 +73,8 @@ pub trait WalletProxy {
 
 pub struct WalletProxyImpl {
 	network: BitcoinNetwork,
-	xprv: ExtendedPrivKey
+	xprv: ExtendedPrivKey,
+	ldk_data_dir: PathBuf,
 }
 impl fmt::Debug for WalletProxyImpl {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -82,27 +83,33 @@ impl fmt::Debug for WalletProxyImpl {
 }
 impl WalletProxy for WalletProxyImpl {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String> {
-		unimplemented!()
+		let wallet = futures::executor::block_on(self._get_rgb_wallet(&self.ldk_data_dir.clone()));
+		wallet.consume_fascia(fascia, witness_txid).map_err(|e| e.to_string())
 	}
 }
 
 impl WalletProxyImpl {
-	fn new(network: BitcoinNetwork, xprv: ExtendedPrivKey) -> Self {
-		Self { network, xprv}
+	fn new(network: BitcoinNetwork, xprv: ExtendedPrivKey, ldk_data_dir: PathBuf) -> Self {
+		Self { network, xprv, ldk_data_dir }
 	}
 
 	pub fn color_psbt(
 		&self, psbt_to_color: &mut PartiallySignedTransaction, coloring_info: ColoringInfo,
 	) -> Result<(Fascia, AssetBeneficiariesMap), String> {
-		unimplemented!()
+		let wallet = futures::executor::block_on(self._get_rgb_wallet(&self.ldk_data_dir.clone()));
+		let (fascia, asset_beneficiaries_map) =
+			wallet.color_psbt(psbt_to_color, coloring_info).map_err(|e| e.to_string())?;
+		Ok((fascia, asset_beneficiaries_map))
 	}
 
-	pub fn is_online(&self) -> bool {
-		unimplemented!()
-	}
+	// pub fn is_online(&self) -> bool {
+	// 	let wallet = futures::executor::block_on(self._get_rgb_wallet(&self.ldk_data_dir.clone()));
+	// 	// wallet.go_online(true, indexer_url).unwrap();
+	// }
 
 	pub fn xpub(&self) -> String {
-		bitcoin::bip32::ExtendedPubKey::from_priv(&bitcoin::key::Secp256k1::new(), &self.xprv).to_string()
+		bitcoin::bip32::ExtendedPubKey::from_priv(&bitcoin::key::Secp256k1::new(), &self.xprv)
+			.to_string()
 	}
 
 	async fn _get_rgb_wallet(&self, ldk_data_dir: &Path) -> Wallet {
@@ -155,10 +162,11 @@ impl ColorSourceImpl {
 			wallet_proxy: WalletProxyImpl::new(
 				network,
 				xprv,
+				Arc::clone(&ldk_data_dir).to_path_buf(),
 			),
 			database: ColorDatabaseImpl::new(),
 		};
-	
+
 		instance
 	}
 
@@ -203,12 +211,13 @@ impl ColorSourceImpl {
 		&self, funding_txid: String, consignment_endpoint: RgbTransport,
 	) -> Result<(RgbTransfer, u64), RgbLibError> {
 		let (data_dir, bitcoin_network, pubkey) = self._get_wallet_data();
-		if !self.wallet_proxy().is_online() {
-			return Err(RgbLibError::Internal { details: "Wallet is offline".to_string() });
-		}
+		// if !self.wallet_proxy().is_online() {
+		// 	return Err(RgbLibError::Internal { details: "Wallet is offline".to_string() });
+		// }
 
 		tokio::task::spawn_blocking(move || {
 			let mut wallet = Self::_new_rgb_wallet(data_dir, bitcoin_network, pubkey);
+			wallet.go_online(true, "127.0.0.1:50001".to_string()).expect("valid indexer url"); // local demo only
 			wallet.accept_transfer(funding_txid.clone(), 0, consignment_endpoint, STATIC_BLINDING)
 		})
 		.await
