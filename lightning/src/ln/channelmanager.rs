@@ -4127,8 +4127,9 @@ where
 		} = args;
 		// The top-level caller should hold the total_consistency_lock read lock.
 		debug_assert!(self.total_consistency_lock.try_write().is_err());
+		println!("debug: send_payment_along_path impl");
 
-		let rgb_payment_info =self.color_source.lock().unwrap().get_rgb_payment_info(payment_hash, false);
+		let rgb_payment_info = self.color_source.lock().unwrap().get_rgb_payment_info(payment_hash, false);
 		let path = if let Some(rgb_payment_info) = rgb_payment_info {
 			if rgb_payment_info.swap_payment {
 				path.clone()
@@ -4143,6 +4144,7 @@ where
 			path.clone()
 		};
 		let path = &path;
+		println!("debug: get_secure_random_bytes -> prev get_secure_random_bytes");
 
 		let prng_seed = self.entropy_source.get_secure_random_bytes();
 		let session_priv = SecretKey::from_slice(&session_priv_bytes[..]).expect("RNG is busted");
@@ -7351,7 +7353,7 @@ where
 				Some(ChannelPhase::UnfundedInboundV1(inbound_chan)) => {
 					let logger = WithChannelContext::from(&self.logger, &inbound_chan.context);
 					if let Some(consignment_endpoint) = &inbound_chan.context.consignment_endpoint {
-						&self.color_source.lock().unwrap().handle_funding(&msg.temporary_channel_id, msg.funding_txid.to_string(),  consignment_endpoint.clone())?;
+						self.color_source.lock().unwrap().handle_funding(&msg.temporary_channel_id, msg.funding_txid.to_string(), consignment_endpoint.clone())?;
 					}
 					match inbound_chan.funding_created(msg, best_block, &self.signer_provider, &&logger) {
 						Ok(res) => res,

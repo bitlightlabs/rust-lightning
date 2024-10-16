@@ -83,6 +83,7 @@ impl fmt::Debug for WalletProxyImpl {
 }
 impl WalletProxy for WalletProxyImpl {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String> {
+		println!("block_on consume_fascia");
 		let wallet = futures::executor::block_on(self._get_rgb_wallet(&self.ldk_data_dir.clone()));
 		wallet.consume_fascia(fascia, witness_txid).map_err(|e| e.to_string())
 	}
@@ -96,6 +97,7 @@ impl WalletProxyImpl {
 	pub fn color_psbt(
 		&self, psbt_to_color: &mut PartiallySignedTransaction, coloring_info: ColoringInfo,
 	) -> Result<(Fascia, AssetBeneficiariesMap), String> {
+		println!("block_on color_psbt");
 		let wallet = futures::executor::block_on(self._get_rgb_wallet(&self.ldk_data_dir.clone()));
 		let (fascia, asset_beneficiaries_map) =
 			wallet.color_psbt(psbt_to_color, coloring_info).map_err(|e| e.to_string())?;
@@ -255,6 +257,7 @@ impl ColorSourceImpl {
 	where
 		<SP as std::ops::Deref>::Target: SignerProvider,
 	{
+		println!("debug: color_source -> color_commitment");
 		let channel_id = &channel_context.channel_id;
 		let funding_outpoint =
 			channel_context.channel_transaction_parameters.funding_outpoint.unwrap();
@@ -274,7 +277,7 @@ impl ColorSourceImpl {
 		let mut rgb_received_htlc = 0;
 		let mut last_rgb_payment_info = None;
 		let mut output_map = HashMap::new();
-
+		println!("debug: color_source -> color_commitment handle htlc");
 		for htlc in commitment_transaction.htlcs() {
 			if htlc.amount_rgb.unwrap_or(0) == 0 {
 				continue;
@@ -288,14 +291,15 @@ impl ColorSourceImpl {
 			let proxy_id_key = ProxyIdKey::new(channel_id, &htlc.payment_hash, inbound.into());
 			let payment_hash_key = PaymentHashKey::from(&proxy_id_key);
 
-			if let Some(mut rgb_payment_info) = self
+			let info = self
 				.database
 				.rgb_payment()
 				.lock()
 				.unwrap()
 				.get_pending_payment(&htlc.payment_hash)
-				.cloned()
-			{
+				.cloned();
+
+			if let Some(mut rgb_payment_info) = info {
 				rgb_payment_info.local_rgb_amount = rgb_info.local_rgb_amount;
 				rgb_payment_info.remote_rgb_amount = rgb_info.remote_rgb_amount;
 				self.database.rgb_payment().lock().unwrap().insert(
@@ -305,29 +309,30 @@ impl ColorSourceImpl {
 				);
 			}
 
-			let rgb_payment_info = self
+			let info = self
 				.database
 				.rgb_payment()
 				.lock()
 				.unwrap()
 				.get_by_proxy_id_key(&proxy_id_key)
-				.cloned()
-				.unwrap_or_else(|| {
-					let info = RgbPaymentInfo {
-						contract_id,
-						amount: htlc_amount_rgb,
-						local_rgb_amount: rgb_info.local_rgb_amount,
-						remote_rgb_amount: rgb_info.remote_rgb_amount,
-						swap_payment: true,
-						inbound,
-					};
-					self.database.rgb_payment().lock().unwrap().insert(
-						&proxy_id_key,
-						info.clone(),
-						false,
-					);
-					info
-				});
+				.cloned();
+
+			let rgb_payment_info = info.unwrap_or_else(|| {
+				let info = RgbPaymentInfo {
+					contract_id,
+					amount: htlc_amount_rgb,
+					local_rgb_amount: rgb_info.local_rgb_amount,
+					remote_rgb_amount: rgb_info.remote_rgb_amount,
+					swap_payment: true,
+					inbound,
+				};
+				self.database.rgb_payment().lock().unwrap().insert(
+					&proxy_id_key,
+					info.clone(),
+					false,
+				);
+				info
+			});
 
 			if inbound {
 				rgb_received_htlc += rgb_payment_info.amount
@@ -411,6 +416,7 @@ impl ColorSourceImpl {
 		// let transfer_info_path = self.ldk_data_dir.join(format!("{txid}_transfer_info"));
 		// self.write_rgb_transfer_info(&transfer_info_path, &transfer_info);
 		self.database.transfer_info().lock().unwrap().insert(txid, transfer_info);
+		println!("debug: color_source -> color_commitment done");
 
 		Ok(())
 	}
@@ -419,6 +425,7 @@ impl ColorSourceImpl {
 	pub(crate) fn color_htlc(
 		&self, htlc_tx: &mut Transaction, htlc: &HTLCOutputInCommitment,
 	) -> Result<(), ChannelError> {
+		println!("debug: color_source -> color_htlc");
 		if htlc.amount_rgb.unwrap_or(0) == 0 {
 			return Ok(());
 		}
@@ -481,6 +488,7 @@ impl ColorSourceImpl {
 		&self, channel_id: &ChannelId, funding_outpoint: &OutPoint,
 		closing_transaction: &mut ClosingTransaction,
 	) -> Result<(), ChannelError> {
+		println!("debug: color_source -> color_closing");
 		let closing_tx = closing_transaction.clone().built;
 
 		let (rgb_info, _) = self.get_rgb_channel_info_pending(channel_id);
@@ -606,6 +614,7 @@ impl ColorSourceImpl {
 		let temp_chan_id = temporary_channel_id;
 		let chan_id = channel_id;
 
+		println!("rename_channel_id");
 		self.database.rename_channel_id(temp_chan_id, chan_id);
 	}
 
@@ -616,6 +625,7 @@ impl ColorSourceImpl {
 	) -> Result<(), MsgHandleErrInternal> {
 		let handle = Handle::current();
 		let _ = handle.enter();
+		println!("block_on handle_funding");
 		let accept_res = futures::executor::block_on(
 			self._accept_transfer(funding_txid.clone(), consignment_endpoint),
 		);
@@ -649,7 +659,8 @@ impl ColorSourceImpl {
 
 		let funding_txid = Txid::from_str(&funding_txid).unwrap();
 		let mut consignment_data = ConsignmentBinaryData::default();
-		consignment.save(&mut consignment_data);
+		let ret = consignment.save(&mut consignment_data);
+		assert!(ret.is_ok());
 		self.database.consignment().lock().unwrap().insert(
 			temporary_channel_id,
 			funding_txid,
@@ -694,6 +705,7 @@ impl ColorSourceImpl {
 	pub fn update_rgb_channel_amount_pending(
 		&self, channel_id: &ChannelId, rgb_offered_htlc: u64, rgb_received_htlc: u64,
 	) {
+		println!("debug: color_source -> update_rgb_channel_amount_pending");
 		self.update_rgb_channel_amount_impl(&channel_id, rgb_offered_htlc, rgb_received_htlc, true)
 	}
 

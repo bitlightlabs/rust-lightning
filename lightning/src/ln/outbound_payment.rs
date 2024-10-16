@@ -733,6 +733,7 @@ impl OutboundPayments {
 		IH: Fn() -> InFlightHtlcs,
 		SP: Fn(SendAlongPathArgs) -> Result<(), APIError>,
 	{
+        println!("debug: send_spontaneous_payment");
 		let preimage = payment_preimage
 			.unwrap_or_else(|| PaymentPreimage(entropy_source.get_secure_random_bytes()));
 		let payment_hash = PaymentHash(Sha256::hash(&preimage.0).to_byte_array());
@@ -804,9 +805,12 @@ impl OutboundPayments {
 		let pay_params = PaymentParameters::from_bolt12_invoice(&invoice);
 		let amount_msat = invoice.amount_msats();
 		let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();
-		let rgb_payment = self.color_source.lock().unwrap().is_payment_rgb(&payment_hash).then(|| {
-			self.color_source.lock().unwrap().filter_first_hops(&payment_hash, &mut filtered_first_hops)
+		
+		let color_source = self.color_source.lock().unwrap();
+		let rgb_payment = color_source.is_payment_rgb(&payment_hash).then(|| {
+			color_source.filter_first_hops(&payment_hash, &mut filtered_first_hops)
 		});
+		drop(color_source);
 		let mut route_params = RouteParameters::from_payment_params_and_value(pay_params, amount_msat, rgb_payment);
 		if let Some(max_fee_msat) = max_total_routing_fee_msat {
 			route_params.max_total_routing_fee_msat = Some(max_fee_msat);
@@ -920,11 +924,15 @@ impl OutboundPayments {
 				return Err(RetryableSendFailure::PaymentExpired)
 			}
 		}
+        println!("debug: send_payment_internal");
 
 		let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();
-		self.color_source.lock().unwrap().is_payment_rgb(&payment_hash).then(|| {
-			self.color_source.lock().unwrap().filter_first_hops( &payment_hash, &mut filtered_first_hops)
-		});
+		if let Ok(color_source) = self.color_source.lock() {
+			if color_source.is_payment_rgb(&payment_hash) {
+				color_source.filter_first_hops(&payment_hash, &mut filtered_first_hops);
+			}
+		}
+        println!("debug: send_payment_internal 2");
 
 		let mut route = router.find_route_with_id(
 			&node_signer.get_node_id(Recipient::Node).unwrap(), &route_params,
@@ -936,11 +944,13 @@ impl OutboundPayments {
 			RetryableSendFailure::RouteNotFound
 		})?;
 
+        println!("debug: send_payment_internal 3");
 		if route.route_params.as_ref() != Some(&route_params) {
 			debug_assert!(false,
 				"Routers are expected to return a Route which includes the requested RouteParameters");
 			route.route_params = Some(route_params.clone());
 		}
+        println!("debug: prev add_new_pending_payment");
 
 		let onion_session_privs = self.add_new_pending_payment(payment_hash,
 			recipient_onion.clone(), payment_id, keysend_preimage, &route, Some(retry_strategy),
@@ -951,6 +961,7 @@ impl OutboundPayments {
 				RetryableSendFailure::DuplicatePayment
 			})?;
 
+        println!("debug: prev pay_route_internal");
 		let res = self.pay_route_internal(&route, payment_hash, recipient_onion, keysend_preimage, payment_id, None,
 			onion_session_privs, node_signer, best_block_height, &send_payment_along_path);
 		log_info!(logger, "Sending payment with id {} and hash {} returned {:?}",
@@ -958,6 +969,7 @@ impl OutboundPayments {
 		if let Err(e) = res {
 			self.handle_pay_route_err(e, payment_id, payment_hash, route, route_params, router, filtered_first_hops, &inflight_htlcs, entropy_source, node_signer, best_block_height, logger, pending_events, &send_payment_along_path);
 		}
+        println!("debug: after pay_route_internal");
 		Ok(())
 	}
 
@@ -984,9 +996,12 @@ impl OutboundPayments {
 		}
 
 		let mut filtered_first_hops = first_hops.into_iter().collect::<Vec<_>>();
-		self.color_source.lock().unwrap().is_payment_rgb( &payment_hash).then(|| {
-			self.color_source.lock().unwrap().filter_first_hops( &payment_hash, &mut filtered_first_hops)
+
+		let color_source = self.color_source.lock().unwrap();
+		color_source.is_payment_rgb(&payment_hash).then(|| {
+			color_source.filter_first_hops( &payment_hash, &mut filtered_first_hops)
 		});
+		drop(color_source);
 
 		let mut route = match router.find_route_with_id(
 			&node_signer.get_node_id(Recipient::Node).unwrap(), &route_params,
@@ -1387,6 +1402,7 @@ impl OutboundPayments {
 		let mut results = Vec::new();
 		debug_assert_eq!(route.paths.len(), onion_session_privs.len());
 		for (path, session_priv_bytes) in route.paths.iter().zip(onion_session_privs.into_iter()) {
+        	println!("debug: send_payment_along_path");
 			let mut path_res = send_payment_along_path(SendAlongPathArgs {
 				path: &path, payment_hash: &payment_hash, recipient_onion: recipient_onion.clone(),
 				total_value, cur_height, payment_id, keysend_preimage: &keysend_preimage, session_priv_bytes
@@ -1411,6 +1427,7 @@ impl OutboundPayments {
 			}
 			results.push(path_res);
 		}
+		println!("debug: after send_payment_along_path");
 		let mut has_ok = false;
 		let mut has_err = false;
 		let mut has_unsent = false;

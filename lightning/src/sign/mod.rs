@@ -1436,7 +1436,8 @@ impl EcdsaChannelSigner for InMemorySigner {
 				&keys.revocation_key,
 			);
 			if commitment_tx.is_colored() {
-				if let Err(_e) = &self.color_source.lock().unwrap().color_htlc(&mut htlc_tx, htlc) {
+				let ret = self.color_source.lock().unwrap().color_htlc(&mut htlc_tx, htlc);
+				if let Err(_e) = ret {
 					return Err(())
 				}
 			}

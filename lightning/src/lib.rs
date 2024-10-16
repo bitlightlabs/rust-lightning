@@ -183,6 +183,17 @@ mod prelude {
 	pub use core::marker::Sized;
 
 	pub(crate) use crate::util::hash_tables::*;
+
+	#[allow(unused_macros)]
+	macro_rules! tr {
+		($($args: expr),*) => {
+			print!("{}:{}", file!(), line!());
+			$(
+				print!(", {}: {}", stringify!($args), $args);
+			)*
+			println!(""); // to get a new line at the end
+		}
+	}
 }
 
 #[cfg(all(not(ldk_bench), feature = "backtrace", feature = "std", test))]
