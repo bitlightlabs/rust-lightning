@@ -15,8 +15,7 @@ use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{TxOut, Txid};
 use database::{
-	ColorDatabaseImpl, ConsignmentBinaryData, PaymentDirection, PaymentHashKey, ProxyIdKey,
-	RgbInfoKey,
+	ColorDatabaseImpl, ConsignmentBinaryData, ConsignmentHandle, PaymentDirection, PaymentHashKey, ProxyIdKey, RgbInfoKey
 };
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
@@ -676,6 +675,13 @@ impl ColorSourceImpl {
 		self.save_rgb_channel_info(&RgbInfoKey::new(&temporary_channel_id, false), &rgb_info);
 
 		Ok(())
+	}
+
+	pub fn get_consignment_by_funding_txid(
+		&self, funding_txid: &Txid,
+	) -> Option<ConsignmentBinaryData> {
+		let handle = self.database.consignment().lock().unwrap().get_by_funding_txid(funding_txid)?;
+		self.database.consignment().lock().unwrap().resolve(handle).cloned()
 	}
 
 	/// Update RGB channel amount

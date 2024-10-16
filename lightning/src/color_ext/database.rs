@@ -1,7 +1,7 @@
 use core::fmt::{Display, Formatter};
 use std::{
 	collections::HashMap,
-	io::{self, Write},
+	io::{self, Read, Write},
 	sync::{Arc, Mutex},
 };
 
@@ -228,6 +228,18 @@ impl Write for ConsignmentBinaryData {
 	fn flush(&mut self) -> io::Result<()> {
 		Ok(())
 	}
+}
+
+impl Read for ConsignmentBinaryData {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let len = std::cmp::min(buf.len(), self.0.len());
+        if len == 0 {
+            return Ok(0);
+        }
+        buf[..len].copy_from_slice(&self.0[..len]);
+        self.0.drain(..len);
+        Ok(len)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
