@@ -9,13 +9,14 @@ use crate::ln::features::ChannelTypeFeatures;
 use crate::ln::{ChannelId, PaymentHash};
 use crate::sign::SignerProvider;
 
-use bitcoin::bip32::ExtendedPrivKey;
+use bitcoin::bip32::{ExtendedPrivKey, ExtendedPubKey};
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::psbt::{PartiallySignedTransaction, Psbt};
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::{TxOut, Txid};
 use database::{
-	ColorDatabaseImpl, ConsignmentBinaryData, ConsignmentHandle, PaymentDirection, PaymentHashKey, ProxyIdKey, RgbInfoKey
+	ColorDatabaseImpl, ConsignmentBinaryData, ConsignmentHandle, PaymentDirection, PaymentHashKey,
+	ProxyIdKey, RgbInfoKey,
 };
 use hex::DisplayHex;
 use rgb_lib::wallet::rust_only::AssetBeneficiariesMap;
@@ -70,16 +71,14 @@ pub trait WalletProxy {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String>;
 }
 
+#[derive(Debug)]
 pub struct WalletProxyImpl {
 	network: BitcoinNetwork,
+	xpub: ExtendedPubKey,
 	xprv: ExtendedPrivKey,
 	ldk_data_dir: PathBuf,
 }
-impl fmt::Debug for WalletProxyImpl {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.debug_struct("WalletProxyImpl").field("xpub_getter", &"Function").finish()
-	}
-}
+
 impl WalletProxy for WalletProxyImpl {
 	fn consume_fascia(&self, fascia: Fascia, witness_txid: RgbTxid) -> Result<(), String> {
 		println!("block_on consume_fascia");
@@ -89,8 +88,10 @@ impl WalletProxy for WalletProxyImpl {
 }
 
 impl WalletProxyImpl {
-	fn new(network: BitcoinNetwork, xprv: ExtendedPrivKey, ldk_data_dir: PathBuf) -> Self {
-		Self { network, xprv, ldk_data_dir }
+	fn new(
+		network: BitcoinNetwork, xpub: ExtendedPubKey, xprv: ExtendedPrivKey, ldk_data_dir: PathBuf,
+	) -> Self {
+		Self { network, xpub, xprv, ldk_data_dir }
 	}
 
 	pub fn color_psbt(
@@ -109,8 +110,7 @@ impl WalletProxyImpl {
 	// }
 
 	pub fn xpub(&self) -> String {
-		bitcoin::bip32::ExtendedPubKey::from_priv(&bitcoin::key::Secp256k1::new(), &self.xprv)
-			.to_string()
+		self.xpub.to_string()
 	}
 
 	async fn _get_rgb_wallet(&self, ldk_data_dir: &Path) -> Wallet {
@@ -154,7 +154,9 @@ impl ColorSource for ColorSourceImpl {
 }
 
 impl ColorSourceImpl {
-	pub fn new(ldk_data_dir: PathBuf, network: BitcoinNetwork, xprv: ExtendedPrivKey) -> Self {
+	pub fn new(
+		ldk_data_dir: PathBuf, network: BitcoinNetwork, xpub: ExtendedPubKey, xprv: ExtendedPrivKey,
+	) -> Self {
 		let ldk_data_dir = Arc::new(ldk_data_dir);
 
 		let instance = Self {
@@ -162,6 +164,7 @@ impl ColorSourceImpl {
 			network,
 			wallet_proxy: WalletProxyImpl::new(
 				network,
+				xpub,
 				xprv,
 				Arc::clone(&ldk_data_dir).to_path_buf(),
 			),
@@ -624,7 +627,10 @@ impl ColorSourceImpl {
 	) -> Result<(), MsgHandleErrInternal> {
 		let handle = Handle::current();
 		let _ = handle.enter();
-		println!("block_on handle_funding");
+		println!(
+			"block_on handle_funding txid: {}, temporary_channel_id {}",
+			funding_txid, temporary_channel_id
+		);
 		let accept_res = futures::executor::block_on(
 			self._accept_transfer(funding_txid.clone(), consignment_endpoint),
 		);
@@ -656,6 +662,8 @@ impl ColorSourceImpl {
 			},
 		};
 
+		println!("accept consignment with contract id {}", consignment.contract_id());
+
 		let funding_txid = Txid::from_str(&funding_txid).unwrap();
 		let mut consignment_data = ConsignmentBinaryData::default();
 		let ret = consignment.save(&mut consignment_data);
@@ -680,7 +688,8 @@ impl ColorSourceImpl {
 	pub fn get_consignment_by_funding_txid(
 		&self, funding_txid: &Txid,
 	) -> Option<ConsignmentBinaryData> {
-		let handle = self.database.consignment().lock().unwrap().get_by_funding_txid(funding_txid)?;
+		let handle =
+			self.database.consignment().lock().unwrap().get_by_funding_txid(funding_txid)?;
 		self.database.consignment().lock().unwrap().resolve(handle).cloned()
 	}
 

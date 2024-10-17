@@ -7337,6 +7337,7 @@ where
 	}
 
 	fn internal_funding_created(&self, counterparty_node_id: &PublicKey, msg: &msgs::FundingCreated) -> Result<(), MsgHandleErrInternal> {
+		println!("internal_funding_created msg txid {}", msg.funding_txid.to_string());
 		let best_block = *self.best_block.read().unwrap();
 
 		let per_peer_state = self.per_peer_state.read().unwrap();
@@ -7348,12 +7349,18 @@ where
 
 		let mut peer_state_lock = peer_state_mutex.lock().unwrap();
 		let peer_state = &mut *peer_state_lock;
+		println!("internal_funding_created remove channel_id {}", msg.temporary_channel_id);
+
 		let (mut chan, funding_msg_opt, monitor) =
 			match peer_state.channel_by_id.remove(&msg.temporary_channel_id) {
 				Some(ChannelPhase::UnfundedInboundV1(inbound_chan)) => {
 					let logger = WithChannelContext::from(&self.logger, &inbound_chan.context);
 					if let Some(consignment_endpoint) = &inbound_chan.context.consignment_endpoint {
+						println!("internal_funding_created call handle_funding");
+
 						self.color_source.lock().unwrap().handle_funding(&msg.temporary_channel_id, msg.funding_txid.to_string(), consignment_endpoint.clone())?;
+					} else {
+						println!("internal_funding_created no consignment_endpoint");
 					}
 					match inbound_chan.funding_created(msg, best_block, &self.signer_provider, &&logger) {
 						Ok(res) => res,
@@ -12248,7 +12255,7 @@ where
 		};
 		if let Some(network_pubkey) = received_network_pubkey {
 			if network_pubkey != our_network_pubkey {
-				log_error!(args.logger, "Key that was generated does not match the existing key.");
+				log_error!(args.logger, "Key that was generated does not match the existing key. left: {}, right: {}", network_pubkey, our_network_pubkey);
 				return Err(DecodeError::InvalidValue);
 			}
 		}
