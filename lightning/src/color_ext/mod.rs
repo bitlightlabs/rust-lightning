@@ -158,7 +158,9 @@ impl ColorSourceImpl {
 		ldk_data_dir: PathBuf, network: BitcoinNetwork, xpub: ExtendedPubKey, xprv: ExtendedPrivKey,
 	) -> Self {
 		let ldk_data_dir = Arc::new(ldk_data_dir);
-
+		let data_root = ldk_data_dir.clone().join("db_data");
+		std::fs::create_dir_all(&data_root).expect("Failed to create data root directory");
+		let sqlite_conn = database::SqliteConnection::new(&data_root.join("rgb.db")).unwrap();
 		let instance = Self {
 			ldk_data_dir: Arc::clone(&ldk_data_dir).to_path_buf(),
 			network,
@@ -168,7 +170,10 @@ impl ColorSourceImpl {
 				xprv,
 				Arc::clone(&ldk_data_dir).to_path_buf(),
 			),
-			database: ColorDatabaseImpl::new(),
+			database: ColorDatabaseImpl::new(
+				sqlite_conn,
+				data_root
+			),
 		};
 
 		instance
@@ -298,8 +303,7 @@ impl ColorSourceImpl {
 				.rgb_payment()
 				.lock()
 				.unwrap()
-				.get_pending_payment(&htlc.payment_hash)
-				.cloned();
+				.get_pending_payment(&htlc.payment_hash);
 
 			if let Some(mut rgb_payment_info) = info {
 				rgb_payment_info.local_rgb_amount = rgb_info.local_rgb_amount;
@@ -316,8 +320,7 @@ impl ColorSourceImpl {
 				.rgb_payment()
 				.lock()
 				.unwrap()
-				.get_by_proxy_id_key(&proxy_id_key)
-				.cloned();
+				.get_by_proxy_id_key(&proxy_id_key);
 
 			let rgb_payment_info = info.unwrap_or_else(|| {
 				let info = RgbPaymentInfo {
@@ -690,7 +693,7 @@ impl ColorSourceImpl {
 	) -> Option<ConsignmentBinaryData> {
 		let handle =
 			self.database.consignment().lock().unwrap().get_by_funding_txid(funding_txid)?;
-		self.database.consignment().lock().unwrap().resolve(handle).cloned()
+		self.database.consignment().lock().unwrap().resolve(handle)
 	}
 
 	/// Update RGB channel amount
@@ -786,8 +789,7 @@ impl ColorSourceImpl {
 			.get_by_payment_hash_key(&PaymentHashKey::new(
 				payment_hash.clone(),
 				PaymentDirection::from(receiver),
-			))
-			.cloned();
+			));
 		if payment.is_none() {
 			return;
 		}
@@ -797,7 +799,7 @@ impl ColorSourceImpl {
 			self.database.rgb_payment().lock().unwrap().resolve_channel_id(payment_hash);
 
 		if channel_id.is_none() {
-			panic!("failed to resolve channel id, which is a bug or of broken data.");
+			panic!("failed to resolve channel id by paymenthash {}, which is a bug or of broken data.", payment_hash);
 		}
 
 		let channel_id = channel_id.unwrap();
@@ -808,6 +810,6 @@ impl ColorSourceImpl {
 	}
 
 	pub fn get_transfer_info(&self, txid: &Txid) -> Option<TransferInfo> {
-		self.database.transfer_info().lock().unwrap().get_by_txid(txid).cloned()
+		self.database.transfer_info().lock().unwrap().get_by_txid(txid)
 	}
 }
